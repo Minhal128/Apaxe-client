@@ -13,6 +13,8 @@ import { colors } from '../constants/colors';
 import CreateOrderModal from '../components/CreateOrderModal';
 import TradeOrderModal from '../components/TradeOrderModal';
 import SearchCoinModal from '../components/SearchCoinModal';
+import RegisteredNavbar from '../components/RegisteredNavbar';
+import UnregisteredNavbar from '../components/UnregisteredNavbar';
 
 const { width } = Dimensions.get('window');
 
@@ -55,7 +57,7 @@ const orderBookAsks = [
   { price: '27,486.39', amount: '2485.27' },
 ];
 
-const timeframes = ['1m', '5m', '15m', '15m', '1d', 'More'];
+const timeframes = ['1m', '5m', '15m', '1h', '1d', 'More'];
 
 const marketWatchData = [
   { id: 1, symbol: 'SBIN', option: '4325.90 USDT', price: '11,0263.8', change: '+1.24%', isPositive: true, amount: '$345.90' },
@@ -68,7 +70,7 @@ const marketWatchData = [
 const categories = ['NSE', 'MCX', 'Forex', 'Crypto', 'Equity', 'Community'];
 
 export default function ChartScreen({ route, navigation }) {
-  const { symbol = 'Nifty 500' } = route?.params || {};
+  const { symbol = 'Nifty 500', isLoggedIn = false } = route?.params || {};
   const [selectedTimeframe, setSelectedTimeframe] = useState('1d');
   const [activeTab, setActiveTab] = useState('Positions');
   const [modalVisible, setModalVisible] = useState(false);
@@ -396,39 +398,15 @@ export default function ChartScreen({ route, navigation }) {
         visible={modalVisible} 
         onClose={() => setModalVisible(false)}
         navigation={navigation}
+        isLoggedIn={isLoggedIn}
       />
 
       {/* Bottom Navbar */}
-      <View style={styles.bottomNavbar}>
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => navigation.navigate('Home')}
-        >
-          <Ionicons name="home" size={24} color={colors.textSecondary} />
-          <Text style={[styles.navLabel, { color: colors.textSecondary }]}>Home</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Ionicons name="bar-chart" size={24} color={colors.textPrimary} />
-          <Text style={styles.navLabel}>Trade</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.walletButton}
-          onPress={() => navigation.navigate('Wallet')}
-        >
-          <Ionicons name="wallet" size={28} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => navigation.navigate('Position')}
-        >
-          <Ionicons name="settings" size={24} color={colors.textSecondary} />
-          <Text style={[styles.navLabel, { color: colors.textSecondary }]}>More</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Ionicons name="person" size={24} color={colors.textSecondary} />
-          <Text style={[styles.navLabel, { color: colors.textSecondary }]}>Profile</Text>
-        </TouchableOpacity>
-      </View>
+      {isLoggedIn ? (
+        <RegisteredNavbar navigation={navigation} activeScreen="Chart" />
+      ) : (
+        <UnregisteredNavbar navigation={navigation} activeScreen="Chart" />
+      )}
     </View>
   );
 }
@@ -782,40 +760,5 @@ const styles = StyleSheet.create({
   },
   negativeChange: {
     color: colors.red,
-  },
-  bottomNavbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    backgroundColor: colors.cardBackground,
-    paddingVertical: 12,
-    paddingBottom: 16,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  navItem: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-  },
-  navLabel: {
-    fontSize: 11,
-    color: colors.textPrimary,
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  walletButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.green,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: -20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
   },
 });

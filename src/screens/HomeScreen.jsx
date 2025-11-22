@@ -87,7 +87,7 @@ export default function HomeScreen({ navigation }) {
           <TouchableOpacity
             key={crypto.symbol}
             style={styles.cryptoCard}
-            onPress={() => navigation.navigate('Chart', { symbol: crypto.symbol })}
+            onPress={() => navigation.navigate('Chart', { symbol: crypto.symbol, isLoggedIn: false })}
           >
             <View style={styles.cryptoLeft}>
               <Text style={styles.cryptoSymbol}>{crypto.symbol}</Text>
@@ -116,22 +116,28 @@ export default function HomeScreen({ navigation }) {
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.navItem}
-          onPress={() => navigation.navigate('Chart', { symbol: 'BTC/USDT' })}
+          onPress={() => navigation.navigate('Chart', { symbol: 'BTC/USDT', isLoggedIn: false })}
         >
           <Ionicons name="bar-chart" size={24} color={colors.textSecondary} />
           <Text style={[styles.navLabel, { color: colors.textSecondary }]}>Trade</Text>
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.walletButton}
-          onPress={() => navigation.navigate('MainTabs')}
+          onPress={() => navigation.navigate('Wallet')}
         >
           <Ionicons name="wallet" size={28} color={colors.textPrimary} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Ionicons name="settings" size={24} color={colors.textSecondary} />
+        <TouchableOpacity 
+          style={styles.navItem}
+          onPress={() => navigation.navigate('Position')}
+        >
+          <Ionicons name="grid" size={24} color={colors.textSecondary} />
           <Text style={[styles.navLabel, { color: colors.textSecondary }]}>More</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
+        <TouchableOpacity 
+          style={styles.navItem}
+          onPress={() => navigation.navigate('Profile')}
+        >
           <Ionicons name="person" size={24} color={colors.textSecondary} />
           <Text style={[styles.navLabel, { color: colors.textSecondary }]}>Profile</Text>
         </TouchableOpacity>

@@ -10,13 +10,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 
-export default function CreateOrderModal({ visible, onClose, navigation, isLoggedIn = false }) {
-  const [orderType, setOrderType] = useState('Market order');
-  const [quantity, setQuantity] = useState('NIFTY 500');
+const priceAdjustments = [-0.5, -0.1, -0.01, 0.49, +0.01, +0.1, +0.5];
+
+export default function ModifyPositionScreen({ visible, onClose }) {
   const [sl, setSl] = useState(0);
   const [tp, setTp] = useState(0);
-
-  const prices = [-0.5, -0.1, -0.01, 0.49, +0.01, +0.1, +0.5];
 
   return (
     <Modal
@@ -32,29 +30,26 @@ export default function CreateOrderModal({ visible, onClose, navigation, isLogge
           {/* Handle Bar */}
           <View style={styles.handleBar} />
 
-          <Text style={styles.title}>Create order</Text>
+          {/* Order ID */}
+          <Text style={styles.orderId}>#12037465935</Text>
 
-          {/* Order Type and Quantity */}
-          <View style={styles.row}>
-            <View style={styles.dropdown}>
-              <Text style={styles.dropdownText}>{orderType}</Text>
-              <Ionicons name="chevron-down" size={16} color={colors.textPrimary} />
+          {/* Position Info */}
+          <View style={styles.positionInfo}>
+            <View style={styles.positionLeft}>
+              <View style={styles.iconContainer}>
+                <Ionicons name="swap-horizontal" size={20} color={colors.textPrimary} />
+              </View>
+              <View>
+                <Text style={styles.symbolText}>SBIN</Text>
+                <Text style={styles.orderType}>Buy 0.01 at 4325.90</Text>
+              </View>
             </View>
-            <View style={styles.dropdown}>
-              <Text style={styles.dropdownText}>{quantity}</Text>
-              <Ionicons name="chevron-down" size={16} color={colors.textPrimary} />
-            </View>
-          </View>
-
-          {/* Prices */}
-          <View style={styles.pricesContainer}>
-            <Text style={styles.priceValue}>0.93545°</Text>
-            <Text style={[styles.priceValue, { color: colors.red }]}>0.93545°</Text>
+            <Text style={styles.priceValue}>$1,200</Text>
           </View>
 
           {/* Price Adjustments */}
           <View style={styles.priceAdjustments}>
-            {prices.map((price, index) => (
+            {priceAdjustments.map((price, index) => (
               <TouchableOpacity
                 key={`price-${price}-${index}`}
                 style={styles.priceButton}
@@ -108,32 +103,15 @@ export default function CreateOrderModal({ visible, onClose, navigation, isLogge
           </View>
 
           {/* Action Buttons */}
-          {isLoggedIn ? (
-            <View style={styles.actionButtons}>
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.sellButton]}
-                onPress={onClose}
-              >
-                <Text style={styles.actionButtonText}>Sell</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.buyButton]}
-                onPress={onClose}
-              >
-                <Text style={styles.actionButtonText}>Buy</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity 
-              style={styles.signInButton}
-              onPress={() => {
-                onClose();
-                navigation.navigate('Login');
-              }}
-            >
-              <Text style={styles.signInButtonText}>Sign in/ Sign up</Text>
+          <View style={styles.actionButtons}>
+            <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
-          )}
+            <TouchableOpacity style={styles.confirmButton} onPress={onClose}>
+              <Ionicons name="checkmark" size={20} color={colors.textPrimary} style={{ marginRight: 4 }} />
+              <Text style={styles.confirmButtonText}>Confirm</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Modal>
@@ -151,7 +129,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    minHeight: '70%',
+    minHeight: '60%',
   },
   handleBar: {
     width: 40,
@@ -159,47 +137,57 @@ const styles = StyleSheet.create({
     backgroundColor: colors.textSecondary,
     borderRadius: 2,
     alignSelf: 'center',
-    marginBottom: 20,
-  },
-  title: {
-    color: colors.textPrimary,
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 20,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 12,
     marginBottom: 24,
   },
-  dropdown: {
-    flex: 1,
-    backgroundColor: colors.inputBackground,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+  orderId: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  positionInfo: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
   },
-  dropdownText: {
-    color: colors.textPrimary,
-    fontSize: 14,
-  },
-  pricesContainer: {
+  positionLeft: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 20,
+    alignItems: 'center',
+    flex: 1,
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.inputBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  symbolText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  orderType: {
+    fontSize: 13,
+    color: '#1E88E5',
   },
   priceValue: {
-    color: colors.blue,
-    fontSize: 24,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary,
   },
   priceAdjustments: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 32,
+    marginBottom: 24,
   },
   priceButton: {
     backgroundColor: colors.inputBackground,
@@ -210,6 +198,7 @@ const styles = StyleSheet.create({
   priceButtonText: {
     color: colors.textPrimary,
     fontSize: 12,
+    fontWeight: '500',
   },
   controlsRow: {
     flexDirection: 'row',
@@ -246,34 +235,32 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
-  signInButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  signInButtonText: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '600',
-  },
   actionButtons: {
     flexDirection: 'row',
     gap: 12,
   },
-  actionButton: {
+  cancelButton: {
     flex: 1,
     paddingVertical: 16,
     borderRadius: 8,
+    backgroundColor: colors.cardBackground,
     alignItems: 'center',
   },
-  sellButton: {
-    backgroundColor: colors.red,
+  cancelButtonText: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '600',
   },
-  buyButton: {
+  confirmButton: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 8,
     backgroundColor: colors.green,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
-  actionButtonText: {
+  confirmButtonText: {
     color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '600',

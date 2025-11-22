@@ -51,6 +51,7 @@ export default function SearchCoinModal({ visible, onClose }) {
             horizontal 
             showsHorizontalScrollIndicator={false}
             style={styles.categoriesContainer}
+            contentContainerStyle={styles.categoriesContent}
           >
             {categories.map((category) => (
               <TouchableOpacity
@@ -86,22 +87,24 @@ export default function SearchCoinModal({ visible, onClose }) {
           </View>
 
           {/* Search Results */}
-          <ScrollView style={styles.results} showsVerticalScrollIndicator={false}>
-            {searchResults.map((item) => (
-              <TouchableOpacity key={item.id} style={styles.resultCard} onPress={onClose}>
-                <View style={styles.resultLeft}>
-                  <Text style={styles.resultSymbol}>{item.symbol}</Text>
-                  <Text style={styles.resultVolume}>{item.volume}</Text>
-                </View>
-                <View style={styles.resultRight}>
-                  <Text style={styles.resultPrice}>{item.price}</Text>
-                  <Text style={[styles.resultChange, item.isPositive ? styles.positiveChange : styles.negativeChange]}>
-                    {item.change}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <View style={styles.resultsContainer}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {searchResults.map((item) => (
+                <TouchableOpacity key={item.id} style={styles.resultCard} onPress={onClose}>
+                  <View style={styles.resultLeft}>
+                    <Text style={styles.resultSymbol}>{item.symbol}</Text>
+                    <Text style={styles.resultVolume}>{item.volume}</Text>
+                  </View>
+                  <View style={styles.resultRight}>
+                    <Text style={styles.resultPrice}>{item.price}</Text>
+                    <Text style={[styles.resultChange, item.isPositive ? styles.positiveChange : styles.negativeChange]}>
+                      {item.change}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
         </View>
       </View>
     </Modal>
@@ -121,9 +124,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 24,
+    padding: 20,
     paddingBottom: 40,
-    maxHeight: '80%',
+    maxHeight: '85%',
   },
   handleBar: {
     width: 40,
@@ -142,6 +145,9 @@ const styles = StyleSheet.create({
   categoriesContainer: {
     marginBottom: 20,
     maxHeight: 50,
+  },
+  categoriesContent: {
+    paddingRight: 16,
   },
   categoryButton: {
     paddingHorizontal: 16,
@@ -169,7 +175,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   searchInput: {
     flex: 1,
@@ -177,14 +183,19 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 14,
   },
+  resultsContainer: {
+    flex: 1,
+  },
   results: {
     flex: 1,
+    marginTop: 8,
   },
   resultCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 16,
+    paddingHorizontal: 4,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },

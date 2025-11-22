@@ -19,6 +19,28 @@ import OtpVerificationScreen from '../screens/OtpVerificationScreen';
 import SetNewPasswordScreen from '../screens/SetNewPasswordScreen';
 import NotificationScreen from '../screens/NotificationScreen';
 import AlertScreen from '../screens/AlertScreen';
+import ProfileScreen from '../screens/ProfileScreen';
+import WalletLoggedIn from '../screens/WalletLoggedIn';
+import PositionLoggedIn from '../screens/PositionLoggedIn';
+import ProfileLoggedIn from '../screens/ProfileLoggedIn';
+import ModifyPositionScreen from '../screens/ModifyPositionScreen';
+import HistoryScreen from '../screens/HistoryScreen';
+import ProfileInfoScreen from '../screens/ProfileInfoScreen';
+import EditProfileScreen from '../screens/EditProfileScreen';
+import PreferencesScreen from '../screens/PreferencesScreen';
+import MarketSegmentScreen from '../screens/MarketSegmentScreen';
+import DefaultOrderScreen from '../screens/DefaultOrderScreen';
+import LanguageScreen from '../screens/LanguageScreen';
+import SecurityScreen from '../screens/SecurityScreen';
+import ChangePasswordScreen from '../screens/ChangePasswordScreen';
+import TwoFactorAuthScreen from '../screens/TwoFactorAuthScreen';
+import AppInfoScreen from '../screens/AppInfoScreen';
+import TermsAndConditionsScreen from '../screens/TermsAndConditionsScreen';
+import CustomerSupportScreen from '../screens/CustomerSupportScreen';
+import ThemeModeScreen from '../screens/ThemeModeScreen';
+import SessionTimeoutScreen from '../screens/SessionTimeoutScreen';
+import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
+import RateUsScreen from '../screens/RateUsScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -102,6 +124,30 @@ export default function AppNavigator() {
         />
         <Stack.Screen name="MainTabs" component={MainTabs} />
         <Stack.Screen name="Chart" component={ChartScreen} />
+        <Stack.Screen name="Wallet" component={WalletScreen} />
+        <Stack.Screen name="Position" component={PositionScreen} />
+        <Stack.Screen name="Profile" component={ProfileScreen} />
+        <Stack.Screen name="WalletLoggedIn" component={WalletLoggedIn} />
+        <Stack.Screen name="PositionLoggedIn" component={PositionLoggedIn} />
+        <Stack.Screen name="ProfileLoggedIn" component={ProfileLoggedIn} />
+        <Stack.Screen name="ModifyPosition" component={ModifyPositionScreen} />
+        <Stack.Screen name="History" component={HistoryScreen} />
+        <Stack.Screen name="ProfileInfo" component={ProfileInfoScreen} />
+        <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+        <Stack.Screen name="Preferences" component={PreferencesScreen} />
+        <Stack.Screen name="MarketSegment" component={MarketSegmentScreen} />
+        <Stack.Screen name="DefaultOrder" component={DefaultOrderScreen} />
+        <Stack.Screen name="Language" component={LanguageScreen} />
+        <Stack.Screen name="Security" component={SecurityScreen} />
+        <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+        <Stack.Screen name="TwoFactorAuth" component={TwoFactorAuthScreen} />
+        <Stack.Screen name="AppInfo" component={AppInfoScreen} />
+        <Stack.Screen name="TermsAndConditions" component={TermsAndConditionsScreen} />
+        <Stack.Screen name="CustomerSupport" component={CustomerSupportScreen} />
+        <Stack.Screen name="ThemeMode" component={ThemeModeScreen} />
+        <Stack.Screen name="SessionTimeout" component={SessionTimeoutScreen} />
+        <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+        <Stack.Screen name="RateUs" component={RateUsScreen} />
         <Stack.Screen name="Notification" component={NotificationScreen} />
         <Stack.Screen name="Alert" component={AlertScreen} />
         <Stack.Screen 

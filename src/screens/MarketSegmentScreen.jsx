@@ -1,0 +1,139 @@
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  StatusBar,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { colors } from '../constants/colors';
+
+export default function MarketSegmentScreen({ navigation }) {
+  const [selectedMarkets, setSelectedMarkets] = useState({
+    NSE: true,
+    FOREX: true,
+    EQUITY: false,
+    STOCK: false,
+    CRYPTO: false,
+  });
+
+  const toggleMarket = (market) => {
+    setSelectedMarkets(prev => ({
+      ...prev,
+      [market]: !prev[market],
+    }));
+  };
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+      
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Market segment</Text>
+        <TouchableOpacity style={styles.notificationIcon}>
+          <Ionicons name="notifications-outline" size={24} color={colors.textPrimary} />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.optionsSection}>
+          {Object.keys(selectedMarkets).map((market) => (
+            <TouchableOpacity
+              key={market}
+              style={styles.optionItem}
+              onPress={() => toggleMarket(market)}
+            >
+              <Text style={styles.optionLabel}>{market}</Text>
+              <View style={[
+                styles.checkbox,
+                selectedMarkets[market] && styles.checkboxChecked
+              ]}>
+                {selectedMarkets[market] && (
+                  <Ionicons name="checkmark" size={16} color={colors.textPrimary} />
+                )}
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 20,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    flex: 1,
+    marginLeft: 8,
+  },
+  notificationIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.cardBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  optionsSection: {
+    marginTop: 16,
+  },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  optionLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.textSecondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: colors.green,
+    borderColor: colors.green,
+  },
+});

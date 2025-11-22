@@ -10,6 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import { Svg, Path, Polyline } from 'react-native-svg';
+import RegisteredNavbar from '../components/RegisteredNavbar';
 
 const gainersData = [
   { name: 'AxisBank', price: '40,059.83', change: '+0.81%', isPositive: true, icon: 'A' },
@@ -89,7 +90,7 @@ export default function HomeScreenLoggedIn({ navigation }) {
             </View>
             <TouchableOpacity 
               style={styles.addFundButton}
-              onPress={() => navigation.navigate('Wallet')}
+              onPress={() => navigation.navigate('WalletLoggedIn')}
             >
               <Ionicons name="add" size={20} color={colors.textPrimary} />
               <Text style={styles.addFundText}>Add fund</Text>
@@ -167,7 +168,7 @@ export default function HomeScreenLoggedIn({ navigation }) {
             <TouchableOpacity
               key={item.name}
               style={styles.gainerCard}
-              onPress={() => navigation.navigate('Chart', { symbol: item.name })}
+              onPress={() => navigation.navigate('Chart', { symbol: item.name, isLoggedIn: true })}
             >
               <View style={styles.gainerHeader}>
                 <View style={styles.iconContainer}>
@@ -265,37 +266,7 @@ export default function HomeScreenLoggedIn({ navigation }) {
         </View>
       </ScrollView>
 
-      {/* Bottom Navbar */}
-      <View style={styles.bottomNavbar}>
-        <TouchableOpacity style={styles.navItem}>
-          <Ionicons name="home" size={24} color={colors.textPrimary} />
-          <Text style={styles.navLabel}>Home</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => navigation.navigate('Chart', { symbol: 'BTC/USDT' })}
-        >
-          <Ionicons name="bar-chart" size={24} color={colors.textSecondary} />
-          <Text style={[styles.navLabel, { color: colors.textSecondary }]}>Trade</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.walletButton}
-          onPress={() => navigation.navigate('Wallet')}
-        >
-          <Ionicons name="wallet" size={28} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => navigation.navigate('Position')}
-        >
-          <Ionicons name="settings" size={24} color={colors.textSecondary} />
-          <Text style={[styles.navLabel, { color: colors.textSecondary }]}>More</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Ionicons name="person" size={24} color={colors.textSecondary} />
-          <Text style={[styles.navLabel, { color: colors.textSecondary }]}>Profile</Text>
-        </TouchableOpacity>
-      </View>
+      <RegisteredNavbar navigation={navigation} activeScreen="home" />
     </View>
   );
 }
@@ -610,40 +581,5 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: colors.blue,
-  },
-  bottomNavbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    backgroundColor: colors.cardBackground,
-    paddingVertical: 12,
-    paddingBottom: 16,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  navItem: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-  },
-  navLabel: {
-    fontSize: 11,
-    color: colors.textPrimary,
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  walletButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.green,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: -20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
   },
 });

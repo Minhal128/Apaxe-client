@@ -10,20 +10,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import UnregisteredNavbar from '../components/UnregisteredNavbar';
 
-export default function WalletScreen({ navigation }) {
+export default function ProfileScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
       
       <View style={styles.content}>
-        <Text style={styles.title}>Wallet</Text>
+        <Text style={styles.title}>Profile</Text>
         
         {/* Illustration */}
         <View style={styles.illustrationContainer}>
-          <Text style={styles.illustrationEmoji}>💰</Text>
+          <Text style={styles.illustrationEmoji}>👤</Text>
         </View>
         
-        <Text style={styles.message}>Log In to Manage Your Funds</Text>
+        <Text style={styles.message}>Log In to Manage Your Profile</Text>
         
         <TouchableOpacity 
           style={styles.signInButton}
@@ -33,7 +33,7 @@ export default function WalletScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <UnregisteredNavbar navigation={navigation} activeScreen="wallet" />
+      <UnregisteredNavbar navigation={navigation} activeScreen="Profile" />
     </View>
   );
 }
