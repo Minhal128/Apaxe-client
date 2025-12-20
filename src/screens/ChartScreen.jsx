@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Dimensions,
   StatusBar,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
@@ -15,68 +16,244 @@ import TradeOrderModal from '../components/TradeOrderModal';
 import SearchCoinModal from '../components/SearchCoinModal';
 import RegisteredNavbar from '../components/RegisteredNavbar';
 import UnregisteredNavbar from '../components/UnregisteredNavbar';
+import { instrumentService, positionService, userService, segmentService, websocketService } from '../services';
 
 const { width } = Dimensions.get('window');
 
-const candlestickData = [
-  { high: 64500, low: 63800, positive: true },
-  { high: 64200, low: 63500, positive: false },
-  { high: 64800, low: 64000, positive: true },
-  { high: 64600, low: 63900, positive: false },
-  { high: 65000, low: 64200, positive: true },
-  { high: 64900, low: 64100, positive: true },
-  { high: 64700, low: 64000, positive: false },
-  { high: 65200, low: 64500, positive: true },
-  { high: 65100, low: 64400, positive: false },
-  { high: 64800, low: 64200, positive: false },
-  { high: 65300, low: 64600, positive: true },
-  { high: 64900, low: 64300, positive: false },
-];
-
-const orderBookBids = [
-  { price: '27,486.39', amount: '2485.27' },
-  { price: '27,486.39', amount: '2485.27' },
-  { price: '27,486.39', amount: '2485.27' },
-  { price: '27,486.39', amount: '2485.27' },
-  { price: '27,486.39', amount: '2485.27' },
-  { price: '27,486.39', amount: '2485.27' },
-  { price: '27,486.39', amount: '2485.27' },
-  { price: '27,486.39', amount: '2485.27' },
-  { price: '27,486.39', amount: '2485.27' },
-];
-
-const orderBookAsks = [
-  { price: '27,486.39', amount: '2485.27' },
-  { price: '27,486.39', amount: '2485.27' },
-  { price: '27,486.39', amount: '2485.27' },
-  { price: '27,486.39', amount: '2485.27' },
-  { price: '27,486.39', amount: '2485.27' },
-  { price: '27,486.39', amount: '2485.27' },
-  { price: '27,486.39', amount: '2485.27' },
-  { price: '27,486.39', amount: '2485.27' },
-  { price: '27,486.39', amount: '2485.27' },
-];
-
 const timeframes = ['1m', '5m', '15m', '1h', '1d', 'More'];
 
-const marketWatchData = [
-  { id: 1, symbol: 'SBIN', option: '4325.90 USDT', price: '11,0263.8', change: '+1.24%', isPositive: true, amount: '$345.90' },
-  { id: 2, symbol: 'SBIN', option: '4325.90 USDT', price: '11,0263.8', change: '-1.24%', isPositive: false, amount: '$345.90' },
-  { id: 3, symbol: 'SBIN', option: '4325.90 USDT', price: '11,0263.8', change: '-1.24%', isPositive: false, amount: '$345.90' },
-  { id: 4, symbol: 'SBIN', option: '4325.90 USDT', price: '11,0263.8', change: '-1.24%', isPositive: false, amount: '$345.90' },
-  { id: 5, symbol: 'SBIN', option: '4325.90 USDT', price: '11,0263.8', change: '+1.24%', isPositive: true, amount: '$345.90' },
-];
-
-const categories = ['NSE', 'MCX', 'Forex', 'Crypto', 'Equity', 'Community'];
-
 export default function ChartScreen({ route, navigation }) {
-  const { symbol = 'Nifty 500', isLoggedIn = false } = route?.params || {};
+  const { symbol = 'Nifty 500', instrumentId = null, isLoggedIn = false } = route?.params || {};
   const [selectedTimeframe, setSelectedTimeframe] = useState('1d');
   const [activeTab, setActiveTab] = useState('Positions');
   const [modalVisible, setModalVisible] = useState(false);
   const [tradeModalVisible, setTradeModalVisible] = useState(false);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('NSE');
+  const [selectedPosition, setSelectedPosition] = useState(null);
+  
+  // Real data states
+  const [loading, setLoading] = useState(true);
+  const [instrumentData, setInstrumentData] = useState(null);
+  const [positions, setPositions] = useState([]);
+  const [marketWatchData, setMarketWatchData] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [dashboardData, setDashboardData] = useState(null);
+  const [candlestickData, setCandlestickData] = useState([]);
+  const [livePrice, setLivePrice] = useState(null);
+  
+  // WebSocket subscription ref
+  const unsubscribeRef = useRef(null);
+
+  // Handle live price updates
+  const handlePriceUpdate = useCallback((data) => {
+    if (data.instrumentId === instrumentId || data.symbol === symbol) {
+      setLivePrice(data);
+      setInstrumentData(prev => ({
+        ...prev,
+        currentPrice: data.ltp,
+        lastPrice: data.ltp,
+        bidPrice: data.bid,
+        askPrice: data.ask,
+        high: data.high,
+        low: data.low,
+        change: data.change,
+        changePercent: data.changePercent,
+        volume: data.volume,
+      }));
+    }
+  }, [instrumentId, symbol]);
+
+  // Setup WebSocket connection for live prices
+  useEffect(() => {
+    if (isLoggedIn && instrumentId) {
+      // Connect to WebSocket
+      websocketService.connect().catch(console.error);
+      
+      // Subscribe to price updates
+      unsubscribeRef.current = websocketService.subscribe('price', handlePriceUpdate);
+      websocketService.subscribeToInstrument(instrumentId);
+    }
+    
+    return () => {
+      // Cleanup
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+      }
+      if (instrumentId) {
+        websocketService.unsubscribeFromInstrument(instrumentId);
+      }
+    };
+  }, [isLoggedIn, instrumentId, handlePriceUpdate]);
+
+  // Fetch instrument data
+  const fetchInstrumentData = async () => {
+    try {
+      if (instrumentId) {
+        const response = await instrumentService.getInstrument(instrumentId);
+        if (response.success) {
+          // Handle { data: { instrument: {...} } }
+          setInstrumentData(response.data?.instrument || response.data);
+        } else if (response.error === 'Authentication required') {
+          console.log('Instrument details require authentication, using placeholder data');
+          // Set placeholder data for unauthenticated users
+          setInstrumentData({
+            symbol: symbol || 'Unknown',
+            name: symbol || 'Unknown Instrument',
+            lastPrice: 0,
+            changePercent: 0,
+          });
+        }
+      } else if (symbol) {
+        const response = await instrumentService.getBySymbol(symbol);
+        if (response.success) {
+          setInstrumentData(response.data?.instrument || response.data);
+        } else if (response.error === 'Authentication required') {
+          console.log('Instrument by symbol requires authentication, using placeholder data');
+          setInstrumentData({
+            symbol: symbol,
+            name: symbol,
+            lastPrice: 0,
+            changePercent: 0,
+          });
+        }
+      }
+      
+      // Fetch OHLC data for chart - only if we have a valid ID
+      if (instrumentId) {
+        try {
+          const ohlcResponse = await instrumentService.getOHLC(instrumentId);
+          if (ohlcResponse.success && Array.isArray(ohlcResponse.data)) {
+            setCandlestickData(ohlcResponse.data);
+          } else if (ohlcResponse.error === 'Authentication required') {
+            console.log('OHLC data requires authentication, using placeholder chart data');
+          }
+        } catch (ohlcError) {
+          console.log('OHLC data not available, using placeholder');
+        }
+      }
+    } catch (error) {
+      console.log('Error fetching instrument data, using placeholder:', error.message);
+      // Set placeholder data on error
+      setInstrumentData({
+        symbol: symbol || 'Unknown',
+        name: symbol || 'Unknown Instrument',
+        lastPrice: 0,
+        changePercent: 0,
+      });
+    }
+  };
+
+  // Fetch positions and dashboard
+  const fetchUserData = async () => {
+    if (!isLoggedIn) return;
+    
+    try {
+      const [positionsRes, dashboardRes] = await Promise.all([
+        positionService.getPositions(),
+        userService.getDashboard()
+      ]);
+      
+      if (positionsRes.success) {
+        setPositions(positionsRes.data || []);
+      }
+      if (dashboardRes.success) {
+        setDashboardData(dashboardRes.data);
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+    }
+  };
+
+  // Fetch market watch data
+  const fetchMarketWatch = async () => {
+    try {
+      const response = await instrumentService.getInstruments({ search: selectedCategory, limit: 10 });
+      if (response.success) {
+        // Handle response: { data: [...] } - data is the array of instruments
+        const instruments = Array.isArray(response.data) ? response.data : [];
+        setMarketWatchData(instruments);
+      }
+    } catch (error) {
+      console.error('Error fetching market watch:', error);
+    }
+  };
+
+  // Fetch segments/categories
+  const fetchCategories = async () => {
+    try {
+      const response = await segmentService.getSegments();
+      // Handle nested response: { data: { segments: [...] } }
+      const segments = response?.data?.segments || [];
+      if (segments.length > 0) {
+        setCategories(segments.map(s => s.name || s.displayName));
+        setSelectedCategory(segments[0]?.name || 'NSE');
+      } else {
+        setCategories(['NSE', 'MCX', 'MCX2', 'Forex', 'Crypto']);
+      }
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      setCategories(['NSE', 'MCX', 'MCX2', 'Forex', 'Crypto']);
+    }
+  };
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      await Promise.all([
+        fetchInstrumentData(),
+        fetchUserData(),
+        fetchCategories()
+      ]);
+      setLoading(false);
+    };
+    loadData();
+  }, []);
+
+  useEffect(() => {
+    fetchMarketWatch();
+  }, [selectedCategory]);
+
+  // Generate placeholder candlestick data if none from API
+  const chartCandlesticks = candlestickData.length > 0 ? candlestickData : [
+    { high: 64500, low: 63800, positive: true },
+    { high: 64200, low: 63500, positive: false },
+    { high: 64800, low: 64000, positive: true },
+    { high: 64600, low: 63900, positive: false },
+    { high: 65000, low: 64200, positive: true },
+    { high: 64900, low: 64100, positive: true },
+    { high: 64700, low: 64000, positive: false },
+    { high: 65200, low: 64500, positive: true },
+    { high: 65100, low: 64400, positive: false },
+    { high: 64800, low: 64200, positive: false },
+    { high: 65300, low: 64600, positive: true },
+    { high: 64900, low: 64300, positive: false },
+  ];
+
+  // Generate order book data based on instrument price
+  const currentPrice = instrumentData?.currentPrice || instrumentData?.lastPrice || instrumentData?.price || 0;
+  const priceChange = instrumentData?.changePercent || instrumentData?.change || 0;
+  const bidPrice = instrumentData?.bidPrice || currentPrice * 0.9998;
+  const askPrice = instrumentData?.askPrice || currentPrice * 1.0002;
+  
+  // Generate realistic order book with spread around current price
+  const generateOrderBook = (basePrice, isBid) => {
+    if (!basePrice || basePrice === 0) {
+      return Array(6).fill({ price: '0.00', amount: '0.00' });
+    }
+    return Array(6).fill(null).map((_, index) => {
+      const spread = isBid ? -(index * 0.0001 * basePrice) : (index * 0.0001 * basePrice);
+      const price = basePrice + spread;
+      const amount = Math.random() * 5000 + 1000;
+      return {
+        price: price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        amount: amount.toFixed(2),
+      };
+    });
+  };
+  
+  const orderBookBids = generateOrderBook(bidPrice, true);
+  const orderBookAsks = generateOrderBook(askPrice, false);
 
   return (
     <View style={styles.container}>
@@ -96,7 +273,9 @@ export default function ChartScreen({ route, navigation }) {
 
       {/* Price Info */}
       <View style={styles.priceContainer}>
-        <Text style={styles.changePercent}>+0.81%</Text>
+        <Text style={[styles.changePercent, priceChange >= 0 ? styles.positiveChange : styles.negativeChange]}>
+          {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
+        </Text>
       </View>
 
       {/* Chart */}
@@ -113,9 +292,9 @@ export default function ChartScreen({ route, navigation }) {
           
           {/* Candlestick chart */}
           <View style={styles.candlestickContainer}>
-            {candlestickData.map((candle, index) => {
-              const maxHigh = Math.max(...candlestickData.map(c => c.high));
-              const minLow = Math.min(...candlestickData.map(c => c.low));
+            {chartCandlesticks.map((candle, index) => {
+              const maxHigh = Math.max(...chartCandlesticks.map(c => c.high));
+              const minLow = Math.min(...chartCandlesticks.map(c => c.low));
               const range = maxHigh - minLow;
               const wickHeight = ((candle.high - candle.low) / range) * 150;
               
@@ -225,15 +404,15 @@ export default function ChartScreen({ route, navigation }) {
           <View style={styles.balanceSection}>
             <View style={styles.balanceRow}>
               <Text style={styles.balanceLabel}>Balance</Text>
-              <Text style={styles.balanceValue}>$40,000.98</Text>
+              <Text style={styles.balanceValue}>${dashboardData?.balance?.toFixed(2) || '0.00'}</Text>
             </View>
             <View style={styles.balanceRow}>
               <Text style={styles.balanceLabel}>Equity</Text>
-              <Text style={styles.balanceValue}>$40,000.98</Text>
+              <Text style={styles.balanceValue}>${dashboardData?.equity?.toFixed(2) || '0.00'}</Text>
             </View>
             <View style={styles.balanceRow}>
               <Text style={styles.balanceLabel}>Free Margin</Text>
-              <Text style={styles.balanceValue}>$40,000.98</Text>
+              <Text style={styles.balanceValue}>${dashboardData?.freeMargin?.toFixed(2) || '0.00'}</Text>
             </View>
           </View>
 
@@ -254,50 +433,53 @@ export default function ChartScreen({ route, navigation }) {
           </ScrollView>
 
           <View style={styles.positionAmount}>
-            <Text style={styles.positionAmountText}>$1,500</Text>
+            <Text style={styles.positionAmountText}>
+              ${Array.isArray(positions) ? positions.reduce((sum, p) => sum + (p.unrealizedPnl || 0), 0).toFixed(2) : '0.00'}
+            </Text>
           </View>
 
-          <TouchableOpacity 
-            style={styles.positionCard}
-            onPress={() => setTradeModalVisible(true)}
-          >
-            <View style={styles.positionHeader}>
-              <View style={styles.positionLeft}>
-                <View style={styles.iconContainer}>
-                  <Text style={styles.iconText}>S</Text>
-                </View>
-                <View>
-                  <Text style={styles.positionSymbol}>SBIN</Text>
-                  <Text style={styles.positionAction}>
-                    <Text style={styles.buyText}>Buy 0.01</Text>
-                    <Text style={styles.atText}> at 4325.90</Text>
+          {Array.isArray(positions) && positions.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="layers-outline" size={48} color={colors.textSecondary} />
+              <Text style={styles.emptyText}>No open positions</Text>
+            </View>
+          ) : Array.isArray(positions) ? (
+            positions.map((position) => (
+              <TouchableOpacity 
+                key={position.id}
+                style={styles.positionCard}
+                onPress={() => {
+                  setSelectedPosition(position);
+                  setTradeModalVisible(true);
+                }}
+              >
+                <View style={styles.positionHeader}>
+                  <View style={styles.positionLeft}>
+                    <View style={styles.iconContainer}>
+                      <Text style={styles.iconText}>{position.instrument?.symbol?.[0] || 'P'}</Text>
+                    </View>
+                    <View>
+                      <Text style={styles.positionSymbol}>{position.instrument?.symbol || 'Unknown'}</Text>
+                      <Text style={styles.positionAction}>
+                        <Text style={position.side === 'BUY' ? styles.buyText : styles.sellText}>
+                          {position.side} {position.quantity}
+                        </Text>
+                        <Text style={styles.atText}> at {position.avgPrice?.toFixed(2)}</Text>
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.positionAmount, position.unrealizedPnl >= 0 ? styles.profitPositive : styles.profitNegative]}>
+                    ${position.unrealizedPnl?.toFixed(2) || '0.00'}
                   </Text>
                 </View>
-              </View>
-              <Text style={styles.positionAmount}>$1,200</Text>
+              </TouchableOpacity>
+            ))
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="layers-outline" size={48} color={colors.textSecondary} />
+              <Text style={styles.emptyText}>No open positions</Text>
             </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.positionCard}
-            onPress={() => setTradeModalVisible(true)}
-          >
-            <View style={styles.positionHeader}>
-              <View style={styles.positionLeft}>
-                <View style={styles.iconContainer}>
-                  <Text style={styles.iconText}>N</Text>
-                </View>
-                <View>
-                  <Text style={styles.positionSymbol}>NIFTY500</Text>
-                  <Text style={styles.positionAction}>
-                    <Text style={styles.sellText}>Sell 0.01</Text>
-                    <Text style={styles.atText}> at 4325.90</Text>
-                  </Text>
-                </View>
-              </View>
-              <Text style={styles.positionAmount}>$300</Text>
-            </View>
-          </TouchableOpacity>
+          )}
         </ScrollView>
       )}
 
@@ -357,34 +539,48 @@ export default function ChartScreen({ route, navigation }) {
             ))}
           </ScrollView>
 
-          {marketWatchData.map((item) => (
-            <TouchableOpacity 
-              key={item.id} 
-              style={styles.marketWatchCard}
-              onPress={() => setSearchModalVisible(true)}
-            >
-              <View style={styles.marketWatchLeft}>
-                <Text style={styles.marketWatchSymbol}>{item.symbol}</Text>
-                <Text style={styles.marketWatchOption}>Option . {item.option}</Text>
-              </View>
-              <View style={styles.marketWatchRight}>
-                <Text style={styles.marketWatchPrice}>{item.price}</Text>
-                <Text style={[styles.marketWatchChange, item.isPositive ? styles.positiveChange : styles.negativeChange]}>
-                  {item.amount}
+          {marketWatchData.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="eye-outline" size={48} color={colors.textSecondary} />
+              <Text style={styles.emptyText}>No instruments found</Text>
+            </View>
+          ) : (
+            marketWatchData.map((item) => (
+              <TouchableOpacity 
+                key={item.id} 
+                style={styles.marketWatchCard}
+                onPress={() => navigation.navigate('Chart', { symbol: item.symbol, instrumentId: item.id, isLoggedIn })}
+              >
+                <View style={styles.marketWatchLeft}>
+                  <Text style={styles.marketWatchSymbol}>{item.symbol}</Text>
+                  <Text style={styles.marketWatchOption}>{item.segment?.name || item.segment || 'N/A'} . {item.currentPrice?.toFixed(2) || '0.00'}</Text>
+                </View>
+                <View style={styles.marketWatchRight}>
+                  <Text style={styles.marketWatchPrice}>{item.currentPrice?.toFixed(2) || '0.00'}</Text>
+                  <Text style={[styles.marketWatchChange, (item.changePercent || 0) >= 0 ? styles.positiveChange : styles.negativeChange]}>
+                    ${Math.abs(item.change || 0).toFixed(2)}
+                  </Text>
+                </View>
+                <Text style={[styles.marketWatchPercentage, (item.changePercent || 0) >= 0 ? styles.positiveChange : styles.negativeChange]}>
+                  {(item.changePercent || 0) >= 0 ? '+' : ''}{(item.changePercent || 0).toFixed(2)}%
                 </Text>
-              </View>
-              <Text style={[styles.marketWatchPercentage, item.isPositive ? styles.positiveChange : styles.negativeChange]}>
-                {item.change}
-              </Text>
-            </TouchableOpacity>
-          ))}
+              </TouchableOpacity>
+            ))
+          )}
         </ScrollView>
       )}
 
       {/* Trade Order Modal */}
       <TradeOrderModal 
         visible={tradeModalVisible} 
-        onClose={() => setTradeModalVisible(false)}
+        onClose={() => {
+          setTradeModalVisible(false);
+          setSelectedPosition(null);
+        }}
+        position={selectedPosition}
+        onSuccess={() => {
+          fetchUserData(); // Refresh positions
+        }}
       />
 
       {/* Search Coin Modal */}
@@ -399,6 +595,8 @@ export default function ChartScreen({ route, navigation }) {
         onClose={() => setModalVisible(false)}
         navigation={navigation}
         isLoggedIn={isLoggedIn}
+        instrument={instrumentData}
+        currentPrice={livePrice?.ltp || currentPrice}
       />
 
       {/* Bottom Navbar */}
@@ -759,6 +957,23 @@ const styles = StyleSheet.create({
     color: colors.green,
   },
   negativeChange: {
+    color: colors.red,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 50,
+  },
+  emptyText: {
+    color: colors.textSecondary,
+    fontSize: 16,
+    marginTop: 16,
+  },
+  profitPositive: {
+    color: colors.green,
+  },
+  profitNegative: {
     color: colors.red,
   },
 });

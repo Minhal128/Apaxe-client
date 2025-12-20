@@ -5,13 +5,40 @@ import {
   StyleSheet,
   Modal,
   TouchableOpacity,
-  Animated,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { colors } from '../constants/colors';
+import { positionService } from '../services';
 
-export default function TradeOrderModal({ visible, onClose, symbol = 'SBIN', price = '4325.90' }) {
+export default function TradeOrderModal({ visible, onClose, position, onSuccess }) {
   const [selectedLeverage, setSelectedLeverage] = useState(null);
+  const [loading, setLoading] = useState(false);
   const leverageOptions = [-0.5, -0.1, -0.01, 0.49, +0.01, +0.1, +0.5];
+
+  if (!position) return null;
+
+  const handleConfirm = async () => {
+    // For now, we assume "Confirm" means Square Off / Close Position
+    // since we don't have modify API yet
+    try {
+      setLoading(true);
+      const response = await positionService.squareOff(position.id);
+      
+      if (response.success) {
+        Alert.alert('Success', 'Position closed successfully');
+        if (onSuccess) onSuccess();
+        onClose();
+      } else {
+        Alert.alert('Error', response.message || 'Failed to close position');
+      }
+    } catch (error) {
+      console.error('Error closing position:', error);
+      Alert.alert('Error', error.message || 'Failed to close position');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <Modal
@@ -31,26 +58,30 @@ export default function TradeOrderModal({ visible, onClose, symbol = 'SBIN', pri
           <View style={styles.handleBar} />
 
           {/* Order ID */}
-          <Text style={styles.orderId}>#12037465935</Text>
+          <Text style={styles.orderId}>#{position.orderNumber || position.id?.substring(0, 8)}</Text>
 
           {/* Symbol Info */}
           <View style={styles.symbolSection}>
             <View style={styles.symbolLeft}>
               <View style={styles.iconContainer}>
-                <Text style={styles.iconText}>S</Text>
+                <Text style={styles.iconText}>{position.instrument?.symbol?.[0] || '?'}</Text>
               </View>
               <View>
-                <Text style={styles.symbol}>{symbol}</Text>
+                <Text style={styles.symbol}>{position.instrument?.symbol || 'Unknown'}</Text>
                 <Text style={styles.action}>
-                  <Text style={styles.buyText}>Buy 0.01</Text>
-                  <Text style={styles.atText}> at {price}</Text>
+                  <Text style={position.side === 'BUY' ? styles.buyText : styles.sellText}>
+                    {position.side} {position.quantity}
+                  </Text>
+                  <Text style={styles.atText}> at {position.avgPrice?.toFixed(2)}</Text>
                 </Text>
               </View>
             </View>
-            <Text style={styles.amount}>$1,200</Text>
+            <Text style={styles.amount}>
+              ${(position.quantity * position.avgPrice)?.toFixed(2)}
+            </Text>
           </View>
 
-          {/* Leverage Options */}
+          {/* Leverage Options - Visual only for now */}
           <View style={styles.leverageContainer}>
             {leverageOptions.map((value, index) => (
               <TouchableOpacity
@@ -73,7 +104,7 @@ export default function TradeOrderModal({ visible, onClose, symbol = 'SBIN', pri
             ))}
           </View>
 
-          {/* SL/TP Controls */}
+          {/* SL/TP Controls - Visual only for now */}
           <View style={styles.controlsContainer}>
             <View style={styles.controlGroup}>
               <TouchableOpacity style={styles.controlButton}>
@@ -98,11 +129,19 @@ export default function TradeOrderModal({ visible, onClose, symbol = 'SBIN', pri
 
           {/* Action Buttons */}
           <View style={styles.actionButtons}>
-            <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
+            <TouchableOpacity style={styles.cancelButton} onPress={onClose} disabled={loading}>
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.confirmButton} onPress={onClose}>
-              <Text style={styles.confirmButtonText}>✓ Confirm</Text>
+            <TouchableOpacity 
+              style={[styles.confirmButton, loading && styles.disabledButton]} 
+              onPress={handleConfirm}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color={colors.textPrimary} />
+              ) : (
+                <Text style={styles.confirmButtonText}>Close Position</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -176,7 +215,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   buyText: {
-    color: colors.blue,
+    color: colors.green,
+    fontWeight: '500',
+  },
+  sellText: {
+    color: colors.red,
     fontWeight: '500',
   },
   atText: {
@@ -273,5 +316,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.textPrimary,
+  },
+  disabledButton: {
+    opacity: 0.6,
   },
 });

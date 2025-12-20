@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,50 @@ import {
   TouchableOpacity,
   StatusBar,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { colors } from '../constants/colors';
+import { authService } from '../services';
 
 export default function ProfileInfoScreen({ navigation }) {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchUserProfile = async () => {
+    try {
+      setLoading(true);
+      const userData = await authService.getProfile();
+      if (userData) {
+        setUser(userData);
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUserProfile();
+  }, []);
+
+  // Refresh profile data when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchUserProfile();
+    }, [])
+  );
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
@@ -39,27 +78,29 @@ export default function ProfileInfoScreen({ navigation }) {
         {/* Profile Details */}
         <View style={styles.detailsSection}>
           <View style={styles.detailCard}>
-            <Text style={styles.detailValue}>Amir Shamzad</Text>
+            <Text style={styles.detailValue}>
+              {user?.firstName || ''} {user?.lastName || ''}
+            </Text>
             <Text style={styles.detailLabel}>Full name</Text>
           </View>
 
           <View style={styles.detailCard}>
-            <Text style={styles.detailValue}>#16375607</Text>
+            <Text style={styles.detailValue}>#{user?.id || 'N/A'}</Text>
             <Text style={styles.detailLabel}>Client ID</Text>
           </View>
 
           <View style={styles.detailCard}>
-            <Text style={styles.detailValue}>amir@gmail.com</Text>
+            <Text style={styles.detailValue}>{user?.email || 'N/A'}</Text>
             <Text style={styles.detailLabel}>Email Address</Text>
           </View>
 
           <View style={styles.detailCard}>
-            <Text style={styles.detailValue}>+13234537596</Text>
+            <Text style={styles.detailValue}>{user?.phone || 'N/A'}</Text>
             <Text style={styles.detailLabel}>Phone number</Text>
           </View>
 
           <View style={styles.detailCard}>
-            <Text style={styles.detailValue}>Peter Simon</Text>
+            <Text style={styles.detailValue}>{user?.manager?.name || 'Not Assigned'}</Text>
             <Text style={styles.detailLabel}>Linked Manager</Text>
           </View>
         </View>
@@ -67,7 +108,7 @@ export default function ProfileInfoScreen({ navigation }) {
         {/* Edit Profile Button */}
         <TouchableOpacity 
           style={styles.editButton}
-          onPress={() => navigation.navigate('EditProfile')}
+          onPress={() => navigation.navigate('EditProfile', { user })}
         >
           <Text style={styles.editButtonText}>Edit profile</Text>
         </TouchableOpacity>
@@ -153,5 +194,9 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '600',
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

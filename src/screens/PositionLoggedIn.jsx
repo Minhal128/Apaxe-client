@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,28 +6,59 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import RegisteredNavbar from '../components/RegisteredNavbar';
 import ModifyPositionScreen from './ModifyPositionScreen';
-
-const positionsData = [
-  { id: 1, type: 'Buy', symbol: 'Nifty 500', option: 'Option: 4326.90 USDT', size: 'Size', avgPrice: 'Avg. Price', pnl: '+230.00', price: '11,0263.8', profit: '$345.90 (-40%)' },
-  { id: 2, type: 'Short', symbol: 'Nifty 500', option: 'Option: 4326.90 USDT', size: 'Size', avgPrice: 'Avg. Price', pnl: '+230.00', price: '11,0263.8', profit: '$345.90 (-40%)' },
-  { id: 3, type: 'Buy', symbol: 'Nifty 500', option: 'Option: 4326.90 USDT', size: 'Size', avgPrice: 'Avg. Price', pnl: '+230.00', price: '11,0263.8', profit: '$345.90 (-40%)' },
-];
-
-const ordersData = [
-  { id: 1, symbol: 'SBIN', type: 'Buy 0.01 at 4325.90', status: 'Filled', date: '12-10-25 | 13:01' },
-  { id: 2, symbol: 'SBIN', type: 'Buy 0.01 at 4325.90', status: 'Filled', date: '12-10-25 | 13:01' },
-  { id: 3, symbol: 'SBIN', type: 'Buy 0.01 at 4325.90', status: 'Filled', date: '12-10-25 | 13:01' },
-  { id: 4, symbol: 'SBIN', type: 'Buy 0.01 at 4325.90', status: 'Filled', date: '12-10-25 | 13:01' },
-];
+import { positionService, orderService } from '../services';
 
 export default function PositionLoggedIn({ navigation }) {
   const [activeTab, setActiveTab] = useState('Positions');
+  const [orderTab, setOrderTab] = useState('Pending'); // Add order sub-tab state
   const [modifyVisible, setModifyVisible] = useState(false);
+  const [selectedPosition, setSelectedPosition] = useState(null);
+  const [positions, setPositions] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [positionsRes, ordersRes] = await Promise.all([
+        positionService.getPositions().catch(() => ({ data: [] })),
+        orderService.getOrderHistory().catch(() => ({ data: [] })),
+      ]);
+      setPositions(positionsRes?.data || []);
+      setOrders(ordersRes?.data || []);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+  };
+
+  const handleClosePosition = async (positionId) => {
+    try {
+      await positionService.squareOff(positionId);
+      fetchData();
+    } catch (error) {
+      console.error('Error closing position:', error);
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -69,72 +100,119 @@ export default function PositionLoggedIn({ navigation }) {
         </TouchableOpacity>
       </View>
 
+      {/* Order Sub-tabs (only show when Orders tab is active) */}
+      {activeTab === 'Orders' && (
+        <View style={styles.subTabsContainer}>
+          <TouchableOpacity 
+            style={[styles.subTab, orderTab === 'Pending' && styles.subTabActive]}
+            onPress={() => setOrderTab('Pending')}
+          >
+            <Text style={[styles.subTabText, orderTab === 'Pending' && styles.subTabTextActive]}>
+              Pending
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.subTab, orderTab === 'Closed' && styles.subTabActive]}
+            onPress={() => setOrderTab('Closed')}
+          >
+            <Text style={[styles.subTabText, orderTab === 'Closed' && styles.subTabTextActive]}>
+              Closed
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Content */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {activeTab === 'Positions' ? (
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.green} />}
+      >
+        {loading ? (
+          <ActivityIndicator size="large" color={colors.green} style={{ marginTop: 50 }} />
+        ) : activeTab === 'Positions' ? (
           <>
-            {positionsData.map((position) => (
+            {Array.isArray(positions) && positions.length > 0 ? positions.map((position) => (
               <View key={position.id} style={styles.positionCard}>
                 <View style={styles.positionHeader}>
-                  <View style={[styles.typeBadge, position.type === 'Buy' ? styles.buyBadge : styles.shortBadge]}>
-                    <Text style={styles.typeBadgeText}>{position.type}</Text>
+                  <View style={[styles.typeBadge, position.side === 'BUY' ? styles.buyBadge : styles.shortBadge]}>
+                    <Text style={styles.typeBadgeText}>{position.side}</Text>
                   </View>
-                  <Text style={styles.positionPrice}>{position.price}</Text>
+                  <Text style={styles.positionPrice}>{(position.currentPrice || 0).toLocaleString()}</Text>
                 </View>
                 
                 <View style={styles.positionBody}>
-                  <Text style={styles.positionSymbol}>{position.symbol}</Text>
-                  <Text style={[styles.positionProfit, position.type === 'Buy' ? styles.profitPositive : styles.profitNegative]}>
-                    {position.profit}
+                  <Text style={styles.positionSymbol}>{position.instrument?.symbol || 'Unknown'}</Text>
+                  <Text style={[styles.positionProfit, (position.unrealizedPnl || 0) >= 0 ? styles.profitPositive : styles.profitNegative]}>
+                    ${(position.unrealizedPnl || 0).toFixed(2)} ({((position.unrealizedPnlPercent || 0)).toFixed(2)}%)
                   </Text>
                 </View>
                 
-                <Text style={styles.positionOption}>{position.option}</Text>
+                <Text style={styles.positionOption}>Qty: {position.quantity} @ {(position.avgPrice || 0).toFixed(2)}</Text>
                 
                 <View style={styles.positionDetails}>
                   <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>{position.size}</Text>
+                    <Text style={styles.detailLabel}>Size: {position.quantity}</Text>
                     <Text style={styles.detailLabel}>P&L</Text>
                   </View>
                   <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>{position.avgPrice}</Text>
-                    <Text style={[styles.detailValue, styles.profitPositive]}>{position.pnl}</Text>
+                    <Text style={styles.detailLabel}>Avg: {(position.avgPrice || 0).toFixed(2)}</Text>
+                    <Text style={[styles.detailValue, (position.unrealizedPnl || 0) >= 0 ? styles.profitPositive : styles.profitNegative]}>
+                      {(position.unrealizedPnl || 0) >= 0 ? '+' : ''}{(position.unrealizedPnl || 0).toFixed(2)}
+                    </Text>
                   </View>
                 </View>
                 
                 <View style={styles.positionActions}>
-                  <TouchableOpacity style={styles.actionBtn}>
+                  <TouchableOpacity style={styles.actionBtn} onPress={() => handleClosePosition(position.id)}>
                     <Text style={styles.actionBtnText}>Close</Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
                     style={styles.actionBtn}
-                    onPress={() => setModifyVisible(true)}
+                    onPress={() => { setSelectedPosition(position); setModifyVisible(true); }}
                   >
                     <Text style={styles.actionBtnText}>Modify</Text>
                   </TouchableOpacity>
                 </View>
               </View>
-            ))}
+            )) : (
+              <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 50 }}>No open positions</Text>
+            )}
           </>
         ) : (
           <>
-            {ordersData.map((order) => (
-              <View key={order.id} style={styles.orderCard}>
-                <View style={styles.orderLeft}>
-                  <View style={styles.orderIcon}>
-                    <Ionicons name="swap-horizontal" size={20} color={colors.textPrimary} />
+            {/* Filter orders based on orderTab */}
+            {(() => {
+              const filteredOrders = orders.filter(order => {
+                if (orderTab === 'Pending') {
+                  return order.status === 'PENDING' || order.status === 'OPEN' || order.status === 'PARTIALLY_FILLED';
+                } else {
+                  return order.status === 'FILLED' || order.status === 'CANCELLED' || order.status === 'REJECTED';
+                }
+              });
+
+              return filteredOrders.length > 0 ? filteredOrders.map((order) => (
+                <View key={order.id} style={styles.orderCard}>
+                  <View style={styles.orderLeft}>
+                    <View style={styles.orderIcon}>
+                      <Ionicons name="swap-horizontal" size={20} color={colors.textPrimary} />
+                    </View>
+                    <View style={styles.orderInfo}>
+                      <Text style={styles.orderSymbol}>{order.instrument?.symbol || 'Unknown'}</Text>
+                      <Text style={styles.orderType}>{order.side} {order.quantity} at {(order.price || order.avgPrice || 0).toFixed(2)}</Text>
+                    </View>
                   </View>
-                  <View style={styles.orderInfo}>
-                    <Text style={styles.orderSymbol}>{order.symbol}</Text>
-                    <Text style={styles.orderType}>{order.type}</Text>
+                  <View style={styles.orderRight}>
+                    <Text style={[styles.orderStatus, { color: order.status === 'FILLED' ? colors.green : colors.textSecondary }]}>{order.status}</Text>
+                    <Text style={styles.orderDate}>{new Date(order.createdAt).toLocaleDateString()}</Text>
                   </View>
                 </View>
-                <View style={styles.orderRight}>
-                  <Text style={styles.orderStatus}>{order.status}</Text>
-                  <Text style={styles.orderDate}>{order.date}</Text>
-                </View>
-              </View>
-            ))}
+              )) : (
+                <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 50 }}>
+                  No {orderTab.toLowerCase()} orders
+                </Text>
+              );
+            })()}
           </>
         )}
       </ScrollView>
@@ -211,6 +289,33 @@ const styles = StyleSheet.create({
   },
   tabTextActive: {
     color: colors.textPrimary,
+    fontWeight: '600',
+  },
+  subTabsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: colors.cardBackground,
+    borderRadius: 8,
+    marginHorizontal: 16,
+    padding: 4,
+  },
+  subTab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  subTabActive: {
+    backgroundColor: colors.textPrimary,
+  },
+  subTabText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  subTabTextActive: {
+    color: colors.background,
     fontWeight: '600',
   },
   content: {

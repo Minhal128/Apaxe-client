@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,24 +7,59 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
+import { instrumentService } from '../services';
 
-const searchResults = [
-  { id: 1, symbol: 'SBIN', volume: 'Vol. 12.3M', price: '11,0263.8', change: '$345.90', isPositive: false },
-  { id: 2, symbol: 'Nifty 500', volume: 'Vol. 12.3M', price: '11,0263.8', change: '$345.90', isPositive: false },
-  { id: 3, symbol: 'Nifty 500', volume: 'Vol. 12.3M', price: '11,0263.8', change: '$345.90', isPositive: false },
-  { id: 4, symbol: 'Nifty 500', volume: 'Vol. 12.3M', price: '11,0263.8', change: '$345.90', isPositive: false },
-  { id: 5, symbol: 'SBIN', volume: 'Vol. 12.3M', price: '11,0263.8', change: '$345.90', isPositive: false },
-  { id: 6, symbol: 'SBIN', volume: 'Vol. 12.3M', price: '11,0263.8', change: '$345.90', isPositive: false },
-];
+const categories = ['NSE', 'MCX2', 'Forex', 'Crypto', 'Equity', 'Commodity'];
 
-const categories = ['NSE', 'MCX', 'Forex', 'Crypto', 'Equity', 'Commodity'];
-
-export default function SearchCoinModal({ visible, onClose }) {
+export default function SearchCoinModal({ visible, onClose, onSelect }) {
   const [selectedCategory, setSelectedCategory] = useState('NSE');
   const [searchQuery, setSearchQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      const delayDebounceFn = setTimeout(() => {
+        fetchInstruments();
+      }, 300);
+
+      return () => clearTimeout(delayDebounceFn);
+    }
+  }, [visible, selectedCategory, searchQuery]);
+
+  const fetchInstruments = async () => {
+    setLoading(true);
+    try {
+      let response;
+      if (searchQuery.length > 0) {
+        response = await instrumentService.searchInstruments(searchQuery);
+      } else {
+        response = await instrumentService.getInstruments({ search: selectedCategory });
+      }
+
+      if (response.success) {
+        setResults(response.data || []);
+      } else {
+        setResults([]);
+      }
+    } catch (error) {
+      console.error('Error fetching instruments:', error);
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelect = (item) => {
+    if (onSelect) {
+      onSelect(item);
+    }
+    onClose();
+  };
 
   return (
     <Modal
@@ -60,7 +95,10 @@ export default function SearchCoinModal({ visible, onClose }) {
                   styles.categoryButton,
                   selectedCategory === category && styles.categoryButtonActive,
                 ]}
-                onPress={() => setSelectedCategory(category)}
+                onPress={() => {
+                  setSelectedCategory(category);
+                  setSearchQuery(''); // Clear search when switching category
+                }}
               >
                 <Text
                   style={[
@@ -88,22 +126,39 @@ export default function SearchCoinModal({ visible, onClose }) {
 
           {/* Search Results */}
           <View style={styles.resultsContainer}>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {searchResults.map((item) => (
-                <TouchableOpacity key={item.id} style={styles.resultCard} onPress={onClose}>
-                  <View style={styles.resultLeft}>
-                    <Text style={styles.resultSymbol}>{item.symbol}</Text>
-                    <Text style={styles.resultVolume}>{item.volume}</Text>
-                  </View>
-                  <View style={styles.resultRight}>
-                    <Text style={styles.resultPrice}>{item.price}</Text>
-                    <Text style={[styles.resultChange, item.isPositive ? styles.positiveChange : styles.negativeChange]}>
-                      {item.change}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {loading ? (
+              <ActivityIndicator size="large" color={colors.primary} />
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {results.length > 0 ? (
+                  results.map((item) => (
+                    <TouchableOpacity 
+                      key={item.id || item.symbol} 
+                      style={styles.resultCard} 
+                      onPress={() => handleSelect(item)}
+                    >
+                      <View style={styles.resultLeft}>
+                        <Text style={styles.resultSymbol}>{item.symbol}</Text>
+                        <Text style={styles.resultVolume}>{item.name}</Text>
+                      </View>
+                      <View style={styles.resultRight}>
+                        <Text style={styles.resultPrice}>
+                          {(item.lastPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </Text>
+                        <Text style={[
+                          styles.resultChange, 
+                          (item.changePercent || 0) >= 0 ? styles.positiveChange : styles.negativeChange
+                        ]}>
+                          {(item.changePercent || 0) >= 0 ? '+' : ''}{(item.changePercent || 0).toFixed(2)}%
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <Text style={styles.noResultsText}>No instruments found</Text>
+                )}
+              </ScrollView>
+            )}
           </View>
         </View>
       </View>
@@ -127,6 +182,7 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 40,
     maxHeight: '85%',
+    height: '80%', // Fixed height
   },
   handleBar: {
     width: 40,
@@ -145,6 +201,7 @@ const styles = StyleSheet.create({
   categoriesContainer: {
     marginBottom: 20,
     maxHeight: 50,
+    minHeight: 50,
   },
   categoriesContent: {
     paddingRight: 16,
@@ -155,6 +212,8 @@ const styles = StyleSheet.create({
     marginRight: 8,
     borderRadius: 16,
     backgroundColor: colors.cardBackground,
+    justifyContent: 'center',
+    height: 36,
   },
   categoryButtonActive: {
     backgroundColor: colors.textPrimary,
@@ -185,10 +244,6 @@ const styles = StyleSheet.create({
   },
   resultsContainer: {
     flex: 1,
-  },
-  results: {
-    flex: 1,
-    marginTop: 8,
   },
   resultCard: {
     flexDirection: 'row',
@@ -230,5 +285,11 @@ const styles = StyleSheet.create({
   },
   negativeChange: {
     color: colors.red,
+  },
+  noResultsText: {
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 20,
+    fontSize: 16,
   },
 });

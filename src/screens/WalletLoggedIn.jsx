@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,21 +8,61 @@ import {
   ScrollView,
   TextInput,
   Modal,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import RegisteredNavbar from '../components/RegisteredNavbar';
-
-const transactions = [
-  { id: 1, type: 'Withdraw', date: '12-10-25', amount: '$50,000', status: 'Paid', statusColor: colors.green },
-  { id: 2, type: 'Deposit', date: '12-10-25', amount: '$50,000', status: 'success', statusColor: colors.green },
-  { id: 3, type: 'Deposit', date: '12-10-25', amount: '$50,000', status: 'success', statusColor: colors.green },
-  { id: 4, type: 'Deposit', date: '12-10-25', amount: '$50,000', status: 'success', statusColor: colors.green },
-];
+import { userService } from '../services';
 
 export default function WalletLoggedIn({ navigation }) {
   const [depositModalVisible, setDepositModalVisible] = useState(false);
   const [withdrawModalVisible, setWithdrawModalVisible] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [dashboard, setDashboard] = useState(null);
+  const [transactions, setTransactions] = useState([]);
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [dashboardRes, balanceHistoryRes] = await Promise.all([
+        userService.getDashboard().catch(() => ({ data: null })),
+        userService.getBalanceHistory().catch(() => ({ data: [] })),
+      ]);
+      
+      setDashboard(dashboardRes?.data);
+      
+      // Ensure transactions is always an array
+      const transactionData = balanceHistoryRes?.data;
+      if (Array.isArray(transactionData)) {
+        setTransactions(transactionData);
+      } else {
+        console.log('Transaction data is not an array:', transactionData);
+        setTransactions([]);
+      }
+    } catch (error) {
+      console.error('Error fetching wallet data:', error);
+      // Ensure transactions is set to empty array on error
+      setTransactions([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+  };
+
+  const balance = dashboard?.balance || 0;
+  const pnlPercent = dashboard?.todayPnlPercent || 0;
 
   return (
     <View style={styles.container}>
@@ -37,59 +77,73 @@ export default function WalletLoggedIn({ navigation }) {
         <View style={styles.placeholder} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Balance Card */}
-        <View style={styles.balanceCard}>
-          <View style={styles.balanceHeader}>
-            <Text style={styles.balanceLabel}>Your balance</Text>
-            <Ionicons name="help-circle-outline" size={16} color="#666" />
-          </View>
-          <Text style={styles.balanceAmount}>$2,610.50</Text>
-          <Text style={styles.balanceChange}>Today's PNL   +0.81%</Text>
-        </View>
-
-        {/* Action Buttons */}
-        <View style={styles.actionButtons}>
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={() => setDepositModalVisible(true)}
-          >
-            <Text style={styles.actionButtonText}>Deposit</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={() => setWithdrawModalVisible(true)}
-          >
-            <Text style={styles.actionButtonText}>Withdraw</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Transaction History */}
-        <Text style={styles.sectionTitle}>Transaction history</Text>
-
-        {transactions.map((transaction) => (
-          <View key={transaction.id} style={styles.transactionCard}>
-            <View style={styles.transactionIcon}>
-              <Ionicons 
-                name={transaction.type === 'Deposit' ? 'arrow-down' : 'arrow-up'} 
-                size={20} 
-                color={colors.textPrimary} 
-              />
-            </View>
-            <View style={styles.transactionInfo}>
-              <Text style={styles.transactionType}>{transaction.type}</Text>
-              <Text style={styles.transactionDate}>{transaction.date}</Text>
-            </View>
-            <View style={styles.transactionRight}>
-              <Text style={styles.transactionAmount}>{transaction.amount}</Text>
-              <View style={[styles.statusBadge, { backgroundColor: transaction.statusColor + '20' }]}>
-                <Text style={[styles.statusText, { color: transaction.statusColor }]}>
-                  {transaction.status}
-                </Text>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.green} />}
+      >
+        {loading ? (
+          <ActivityIndicator size="large" color={colors.green} style={{ marginTop: 50 }} />
+        ) : (
+          <>
+            {/* Balance Card */}
+            <View style={styles.balanceCard}>
+              <View style={styles.balanceHeader}>
+                <Text style={styles.balanceLabel}>Your balance</Text>
+                <Ionicons name="help-circle-outline" size={16} color="#666" />
               </View>
+              <Text style={styles.balanceAmount}>${balance.toLocaleString()}</Text>
+              <Text style={[styles.balanceChange, { color: pnlPercent >= 0 ? colors.green : colors.red }]}>
+                Today's PNL   {pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
+              </Text>
             </View>
-          </View>
-        ))}
+
+            {/* Action Buttons */}
+            <View style={styles.actionButtons}>
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={() => setDepositModalVisible(true)}
+              >
+                <Text style={styles.actionButtonText}>Deposit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={() => setWithdrawModalVisible(true)}
+              >
+                <Text style={styles.actionButtonText}>Withdraw</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Transaction History */}
+            <Text style={styles.sectionTitle}>Transaction history</Text>
+
+            {Array.isArray(transactions) && transactions.length > 0 ? transactions.map((transaction) => (
+              <View key={transaction.id} style={styles.transactionCard}>
+                <View style={styles.transactionIcon}>
+                  <Ionicons 
+                    name={transaction.type === 'DEPOSIT' ? 'arrow-down' : 'arrow-up'} 
+                    size={20} 
+                    color={colors.textPrimary} 
+                  />
+                </View>
+                <View style={styles.transactionInfo}>
+                  <Text style={styles.transactionType}>{transaction.type}</Text>
+                  <Text style={styles.transactionDate}>{new Date(transaction.createdAt).toLocaleDateString()}</Text>
+                </View>
+                <View style={styles.transactionRight}>
+                  <Text style={styles.transactionAmount}>${(transaction.amount || 0).toLocaleString()}</Text>
+                  <View style={[styles.statusBadge, { backgroundColor: (transaction.status === 'COMPLETED' ? colors.green : colors.textSecondary) + '20' }]}>
+                    <Text style={[styles.statusText, { color: transaction.status === 'COMPLETED' ? colors.green : colors.textSecondary }]}>
+                      {transaction.status}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )) : (
+              <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 20 }}>No transactions yet</Text>
+            )}
+          </>
+        )}
       </ScrollView>
 
       {/* Deposit Modal */}
@@ -119,6 +173,34 @@ export default function WalletLoggedIn({ navigation }) {
 
 // Deposit Modal Component
 function DepositModal({ onClose }) {
+  const [amount, setAmount] = useState('');
+  const [remarks, setRemarks] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleDeposit = async () => {
+    if (!amount || parseFloat(amount) <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await userService.depositFunds(amount, remarks);
+      if (result.success) {
+        alert('Deposit successful!');
+        onClose();
+        // Refresh the page data
+        window.location.reload();
+      } else {
+        alert(result.error || 'Deposit failed');
+      }
+    } catch (error) {
+      alert('Deposit failed: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <View style={styles.modalOverlay}>
       <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={onClose} />
@@ -128,16 +210,35 @@ function DepositModal({ onClose }) {
         
         <View style={styles.inputContainer}>
           <Text style={styles.inputLabel}>Amount to deposit</Text>
-          <TextInput style={styles.input} placeholderTextColor={colors.textSecondary} />
+          <TextInput 
+            style={styles.input} 
+            placeholderTextColor={colors.textSecondary}
+            placeholder="Enter amount"
+            value={amount}
+            onChangeText={setAmount}
+            keyboardType="numeric"
+          />
         </View>
 
         <View style={styles.inputContainer}>
           <Text style={styles.inputLabel}>Remarks</Text>
-          <TextInput style={styles.input} placeholderTextColor={colors.textSecondary} />
+          <TextInput 
+            style={styles.input} 
+            placeholderTextColor={colors.textSecondary}
+            placeholder="Optional remarks"
+            value={remarks}
+            onChangeText={setRemarks}
+          />
         </View>
 
-        <TouchableOpacity style={styles.submitButton} onPress={onClose}>
-          <Text style={styles.submitButtonText}>Deposit</Text>
+        <TouchableOpacity 
+          style={[styles.submitButton, loading && { opacity: 0.6 }]} 
+          onPress={handleDeposit}
+          disabled={loading}
+        >
+          <Text style={styles.submitButtonText}>
+            {loading ? 'Processing...' : 'Deposit'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -146,6 +247,34 @@ function DepositModal({ onClose }) {
 
 // Withdraw Modal Component
 function WithdrawModal({ onClose }) {
+  const [amount, setAmount] = useState('');
+  const [remarks, setRemarks] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleWithdraw = async () => {
+    if (!amount || parseFloat(amount) <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await userService.withdrawFunds(amount, remarks);
+      if (result.success) {
+        alert('Withdrawal successful!');
+        onClose();
+        // Refresh the page data
+        window.location.reload();
+      } else {
+        alert(result.error || 'Withdrawal failed');
+      }
+    } catch (error) {
+      alert('Withdrawal failed: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <View style={styles.modalOverlay}>
       <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={onClose} />
@@ -155,16 +284,35 @@ function WithdrawModal({ onClose }) {
         
         <View style={styles.inputContainer}>
           <Text style={styles.inputLabel}>Amount to withdraw</Text>
-          <TextInput style={styles.input} placeholderTextColor={colors.textSecondary} />
+          <TextInput 
+            style={styles.input} 
+            placeholderTextColor={colors.textSecondary}
+            placeholder="Enter amount"
+            value={amount}
+            onChangeText={setAmount}
+            keyboardType="numeric"
+          />
         </View>
 
         <View style={styles.inputContainer}>
           <Text style={styles.inputLabel}>Remarks</Text>
-          <TextInput style={styles.input} placeholderTextColor={colors.textSecondary} />
+          <TextInput 
+            style={styles.input} 
+            placeholderTextColor={colors.textSecondary}
+            placeholder="Optional remarks"
+            value={remarks}
+            onChangeText={setRemarks}
+          />
         </View>
 
-        <TouchableOpacity style={styles.submitButton} onPress={onClose}>
-          <Text style={styles.submitButtonText}>Confirm</Text>
+        <TouchableOpacity 
+          style={[styles.submitButton, loading && { opacity: 0.6 }]} 
+          onPress={handleWithdraw}
+          disabled={loading}
+        >
+          <Text style={styles.submitButtonText}>
+            {loading ? 'Processing...' : 'Confirm'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>

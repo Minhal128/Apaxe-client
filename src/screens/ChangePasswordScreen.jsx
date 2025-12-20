@@ -7,15 +7,74 @@ import {
   TouchableOpacity,
   StatusBar,
   TextInput,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
+import { authService } from '../services';
 
 export default function ChangePasswordScreen({ navigation }) {
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleChangePassword = async () => {
+    // Validation
+    if (!oldPassword.trim()) {
+      Alert.alert('Error', 'Please enter your current password');
+      return;
+    }
+
+    if (!newPassword.trim()) {
+      Alert.alert('Error', 'Please enter a new password');
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      Alert.alert('Error', 'New password must be at least 8 characters long');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Error', 'New passwords do not match');
+      return;
+    }
+
+    if (oldPassword === newPassword) {
+      Alert.alert('Error', 'New password must be different from current password');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await authService.changePassword(oldPassword, newPassword);
+      
+      if (response.success) {
+        Alert.alert(
+          'Success', 
+          'Password changed successfully',
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack()
+            }
+          ]
+        );
+      } else {
+        Alert.alert('Error', response.error?.message || 'Failed to change password');
+      }
+    } catch (error) {
+      console.error('Change password error:', error);
+      Alert.alert('Error', 'Failed to change password. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -86,12 +145,42 @@ export default function ChangePasswordScreen({ navigation }) {
           </View>
         </View>
 
+        {/* Confirm New Password */}
+        <View style={styles.inputSection}>
+          <Text style={styles.label}>Confirm new password</Text>
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder="Confirm new password"
+              placeholderTextColor={colors.textSecondary}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry={!showConfirmPassword}
+            />
+            <TouchableOpacity
+              style={styles.eyeIcon}
+              onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+            >
+              <Ionicons
+                name={showConfirmPassword ? 'eye-off' : 'eye'}
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Update Button */}
         <TouchableOpacity 
-          style={styles.updateButton}
-          onPress={() => navigation.goBack()}
+          style={[styles.updateButton, loading && styles.disabledButton]}
+          onPress={handleChangePassword}
+          disabled={loading}
         >
-          <Text style={styles.updateButtonText}>Update</Text>
+          {loading ? (
+            <ActivityIndicator color={colors.textPrimary} />
+          ) : (
+            <Text style={styles.updateButtonText}>Update</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -172,5 +261,8 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '600',
+  },
+  disabledButton: {
+    opacity: 0.7,
   },
 });

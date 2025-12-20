@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,20 +7,95 @@ import {
   TextInput,
   TouchableOpacity,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
-
-const cryptoData = [
-  { symbol: 'BTC/USDT', volume: '770M USDT', price: '11,0263.8', change: '-1.67%', isPositive: false },
-  { symbol: 'SOL/USDT', volume: '770M USDT', price: '11,0263.8', change: '1.27%', isPositive: true },
-  { symbol: 'ETH/USDT', volume: '770M USDT', price: '11,0263.8', change: '1.27%', isPositive: true },
-  { symbol: 'TRON/USDT', volume: '770M USDT', price: '11,0263.8', change: '1.27%', isPositive: true },
-  { symbol: 'XRP/USDT', volume: '770M USDT', price: '11,0263.8', change: '-1.67%', isPositive: false },
-];
-
+import { instrumentService, segmentService } from '../services';
 
 export default function HomeScreen({ navigation }) {
+  const [instruments, setInstruments] = useState([]);
+  const [segments, setSegments] = useState([]);
+  const [selectedSegment, setSelectedSegment] = useState('MCX2');
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [error, setError] = useState(null);
+  const [hasApiError, setHasApiError] = useState(false); // Track if it's an API error vs empty data
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  useEffect(() => {
+    if (selectedSegment && (segments.length > 0 || selectedSegment === 'MCX2')) {
+      fetchInstruments();
+    }
+  }, [selectedSegment, segments]);
+
+  const fetchData = async () => {
+    try {
+      console.log('Fetching segments...');
+      const segmentsRes = await segmentService.getSegments();
+      console.log('Segments response:', segmentsRes);
+      // Handle nested response: { data: { segments: [...] } }
+      const segmentsList = segmentsRes?.data?.segments || segmentsRes?.segments || [];
+      setSegments(segmentsList);
+      
+      // Trigger instruments fetch after segments are loaded
+      if (selectedSegment) {
+        setTimeout(() => fetchInstruments(), 100);
+      }
+    } catch (err) {
+      console.error('Error fetching segments:', err);
+    }
+  };
+
+  const fetchInstruments = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      setHasApiError(false);
+      console.log('Fetching instruments for segment:', selectedSegment);
+      
+      // Find the segment ID for the selected segment name
+      const segment = segments.find(s => s.name === selectedSegment || s.displayName === selectedSegment);
+      let params = {};
+      
+      if (segment) {
+        // Use segment ID for filtering
+        params.segment = segment.id;
+        console.log('Using segment ID:', segment.id);
+      } else if (selectedSegment === 'MCX2') {
+        // Hardcode MCX2 segment ID since we know it exists
+        params.segment = '6946a6bb2056b8e4a5319327';
+        console.log('Using hardcoded MCX2 segment ID');
+      } else {
+        // For other categories, use search (might not return results)
+        params.search = selectedSegment;
+        console.log('Using search for:', selectedSegment);
+      }
+      
+      const res = await instrumentService.getInstruments(params);
+      console.log('Instruments response:', res);
+      // Handle response: { data: [...] } - data is the array of instruments
+      const data = Array.isArray(res?.data) ? res.data : [];
+      setInstruments(data);
+      
+      // Don't set error for empty results - just let the UI show "No instruments found"
+      
+    } catch (err) {
+      console.log('Error fetching instruments:', err.message);
+      setError('Unable to load instruments. Please check your connection.');
+      setHasApiError(true); // This is a real API error, show retry button
+      setInstruments([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredInstruments = instruments.filter(i => 
+    !searchQuery || i.symbol?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
@@ -54,58 +129,79 @@ export default function HomeScreen({ navigation }) {
           style={styles.searchInput}
           placeholder="Search coin"
           placeholderTextColor={colors.textSecondary}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
         />
       </View>
 
       {/* Position Filters */}
       <View style={styles.positionFiltersContainer}>
-        <View style={styles.positionFilters}>
-          <TouchableOpacity style={[styles.filterButton, styles.filterButtonActive]}>
-            <Text style={styles.filterTextActive}>Crypto</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.filterButton}>
-            <Text style={styles.filterText}>MCX</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.filterButton}>
-            <Text style={styles.filterText}>Forex</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.filterButton}>
-            <Text style={styles.filterText}>NSE</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.filterButton}>
-            <Text style={styles.filterText}>Equity</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.filterButton}>
-            <Text style={styles.filterText}>Commodity</Text>
-          </TouchableOpacity>
-        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={styles.positionFilters}>
+            {['Crypto', 'MCX2', 'Forex', 'NSE', 'Equity', 'Commodity'].map((seg) => (
+              <TouchableOpacity 
+                key={seg}
+                style={[styles.filterButton, selectedSegment === seg && styles.filterButtonActive]}
+                onPress={() => setSelectedSegment(seg)}
+              >
+                <Text style={selectedSegment === seg ? styles.filterTextActive : styles.filterText}>{seg}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
       </View>
 
       {/* Crypto List */}
       <ScrollView style={styles.cryptoList} showsVerticalScrollIndicator={false}>
-        {cryptoData.map((crypto) => (
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.green} />
+            <Text style={styles.loadingText}>Loading instruments...</Text>
+          </View>
+        ) : error && hasApiError ? (
+          <View style={styles.errorContainer}>
+            <Ionicons name="cloud-offline-outline" size={48} color={colors.textSecondary} />
+            <Text style={styles.errorText}>{error}</Text>
+            <Text style={styles.errorSubText}>Make sure the backend server is running on port 5000</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={fetchInstruments}>
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : filteredInstruments.length > 0 ? filteredInstruments.map((crypto) => (
           <TouchableOpacity
-            key={crypto.symbol}
+            key={crypto.id || crypto.symbol}
             style={styles.cryptoCard}
-            onPress={() => navigation.navigate('Chart', { symbol: crypto.symbol, isLoggedIn: false })}
+            onPress={() => navigation.navigate('Chart', { symbol: crypto.symbol, instrumentId: crypto.id, isLoggedIn: false })}
           >
             <View style={styles.cryptoLeft}>
               <Text style={styles.cryptoSymbol}>{crypto.symbol}</Text>
-              <Text style={styles.cryptoVolume}>{crypto.volume}</Text>
+              <Text style={styles.cryptoVolume}>{crypto.volume ? `${crypto.volume} USDT` : crypto.name}</Text>
             </View>
             <View style={styles.cryptoRight}>
-              <Text style={styles.cryptoPrice}>{crypto.price}</Text>
+              <Text style={styles.cryptoPrice}>{(crypto.lastPrice || crypto.price || 0).toLocaleString()}</Text>
               <View
                 style={[
                   styles.changeContainer,
-                  { backgroundColor: crypto.isPositive ? colors.green : colors.red },
+                  { backgroundColor: (crypto.changePercent || 0) >= 0 ? colors.green : colors.red },
                 ]}
               >
-                <Text style={styles.changeText}>{crypto.change}</Text>
+                <Text style={styles.changeText}>
+                  {(crypto.changePercent || 0) >= 0 ? '+' : ''}{(crypto.changePercent || 0).toFixed(2)}%
+                </Text>
               </View>
             </View>
           </TouchableOpacity>
-        ))}
+        )) : (
+          <View style={styles.noDataContainer}>
+            <Ionicons name="bar-chart-outline" size={48} color={colors.textSecondary} />
+            <Text style={styles.noDataText}>No instruments available</Text>
+            <Text style={styles.noDataSubText}>
+              {selectedSegment === 'MCX2' 
+                ? 'MCX2 instruments are being loaded...' 
+                : `No ${selectedSegment} instruments found in the database`}
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
       {/* Bottom Navbar */}
@@ -363,5 +459,68 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 5,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 50,
+  },
+  loadingText: {
+    color: colors.textSecondary,
+    marginTop: 12,
+    fontSize: 14,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 50,
+    paddingHorizontal: 20,
+  },
+  errorText: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  errorSubText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: colors.green,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 20,
+  },
+  retryButtonText: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  noDataContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 50,
+    paddingHorizontal: 20,
+  },
+  noDataText: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  noDataSubText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
   },
 });

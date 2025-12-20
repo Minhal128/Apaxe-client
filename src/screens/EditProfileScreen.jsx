@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,78 @@ import {
   TouchableOpacity,
   StatusBar,
   TextInput,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
+import { authService } from '../services';
 
-export default function EditProfileScreen({ navigation }) {
+export default function EditProfileScreen({ route, navigation }) {
+  const existingUser = route?.params?.user;
+  
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (existingUser) {
+      setFullName(`${existingUser.firstName || ''} ${existingUser.lastName || ''}`.trim());
+      setEmail(existingUser.email || '');
+      setPhone(existingUser.phone || '');
+    } else {
+      fetchProfile();
+    }
+  }, [existingUser]);
+
+  const fetchProfile = async () => {
+    setLoading(true);
+    try {
+      const userData = await authService.getProfile();
+      if (userData) {
+        setFullName(`${userData.firstName || ''} ${userData.lastName || ''}`.trim());
+        setEmail(userData.email || '');
+        setPhone(userData.phone || '');
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateProfile = async () => {
+    setSaving(true);
+    try {
+      const response = await authService.updateProfile({
+        name: fullName.trim(), // Send as single name field
+        email: email.trim(),
+        phone: phone,
+      });
+      
+      if (response.success) {
+        Alert.alert('Success', 'Profile updated successfully');
+        navigation.goBack();
+      } else {
+        Alert.alert('Error', response.error?.message || 'Failed to update profile');
+      }
+    } catch (error) {
+      console.error('Update profile error:', error);
+      Alert.alert('Error', 'Failed to update profile');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -80,10 +144,15 @@ export default function EditProfileScreen({ navigation }) {
 
         {/* Update Button */}
         <TouchableOpacity 
-          style={styles.updateButton}
-          onPress={() => navigation.goBack()}
+          style={[styles.updateButton, saving && styles.disabledButton]}
+          onPress={handleUpdateProfile}
+          disabled={saving}
         >
-          <Text style={styles.updateButtonText}>Update profile</Text>
+          {saving ? (
+            <ActivityIndicator color={colors.textPrimary} />
+          ) : (
+            <Text style={styles.updateButtonText}>Update profile</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -178,5 +247,12 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '600',
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  disabledButton: {
+    opacity: 0.7,
   },
 });

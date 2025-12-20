@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,19 +6,15 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import { Svg, Path, Polyline } from 'react-native-svg';
 import RegisteredNavbar from '../components/RegisteredNavbar';
+import { userService, instrumentService, positionService, authService } from '../services';
 
-const gainersData = [
-  { name: 'AxisBank', price: '40,059.83', change: '+0.81%', isPositive: true, icon: 'A' },
-  { name: 'SBIN', price: '40,059.83', change: '+0.81%', isPositive: true, icon: 'S' },
-  { name: 'NIFTY50', price: '40,059', change: '+0.81%', isPositive: true, icon: 'N' },
-];
-
-const categories = ['Crypto', 'MCX', 'Forex', 'NSE', 'Equity', 'Commodity'];
+const categories = ['Crypto', 'MCX', 'MCX2', 'Forex', 'NSE', 'Equity', 'Commodity'];
 
 // Mini chart component
 const MiniChart = ({ isPositive }) => {
@@ -41,6 +37,50 @@ const MiniChart = ({ isPositive }) => {
 export default function HomeScreenLoggedIn({ navigation }) {
   const [activeTab, setActiveTab] = useState('Top gainers');
   const [selectedCategory, setSelectedCategory] = useState('Crypto');
+  const [positionFilter, setPositionFilter] = useState('Open'); // Add position filter state
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
+  const [dashboard, setDashboard] = useState(null);
+  const [topMovers, setTopMovers] = useState([]);
+  const [positions, setPositions] = useState([]);
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [userData, dashboardData, moversData, positionsData] = await Promise.all([
+        authService.getUser(),
+        userService.getDashboard().catch(() => null),
+        instrumentService.getTopMovers().catch(() => ({ data: [] })),
+        positionService.getPositions().catch(() => ({ data: [] })),
+      ]);
+      
+      setUser(userData);
+      setDashboard(dashboardData?.data);
+      // Handle response: { data: [...] }
+      setTopMovers(Array.isArray(moversData?.data) ? moversData.data : []);
+      setPositions(Array.isArray(positionsData?.data) ? positionsData.data : []);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const balance = dashboard?.balance || 0;
+  const pnl = dashboard?.todayPnl || 0;
+  const pnlPercent = dashboard?.todayPnlPercent || 0;
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.green} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -51,11 +91,11 @@ export default function HomeScreenLoggedIn({ navigation }) {
         <View style={styles.headerTop}>
           <View style={styles.profileSection}>
             <View style={styles.profileImage}>
-              <Text style={styles.profileText}>R</Text>
+              <Text style={styles.profileText}>{user?.firstName?.[0] || 'U'}</Text>
             </View>
             <View>
               <Text style={styles.welcomeText}>Welcome</Text>
-              <Text style={styles.userName}>Redminton Peter</Text>
+              <Text style={styles.userName}>{user?.firstName} {user?.lastName}</Text>
             </View>
           </View>
           <View style={styles.headerIcons}>
@@ -82,10 +122,12 @@ export default function HomeScreenLoggedIn({ navigation }) {
           </View>
           <View style={styles.balanceMainRow}>
             <View>
-              <Text style={styles.balanceAmount}>$2,610.50</Text>
+              <Text style={styles.balanceAmount}>${balance.toLocaleString()}</Text>
               <View style={styles.balanceFooter}>
                 <Text style={styles.pnlLabel}>Today's PNL</Text>
-                <Text style={styles.pnlValue}>+0.81%</Text>
+                <Text style={[styles.pnlValue, { color: pnlPercent >= 0 ? colors.green : colors.red }]}>
+                  {pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
+                </Text>
               </View>
             </View>
             <TouchableOpacity 
@@ -164,25 +206,29 @@ export default function HomeScreenLoggedIn({ navigation }) {
           style={styles.gainersScrollView}
           contentContainerStyle={styles.gainersListContainer}
         >
-          {gainersData.map((item) => (
+          {topMovers.length > 0 ? topMovers.map((item) => (
             <TouchableOpacity
-              key={item.name}
+              key={item.id || item.symbol}
               style={styles.gainerCard}
-              onPress={() => navigation.navigate('Chart', { symbol: item.name, isLoggedIn: true })}
+              onPress={() => navigation.navigate('Chart', { symbol: item.symbol, instrumentId: item.id, isLoggedIn: true })}
             >
               <View style={styles.gainerHeader}>
                 <View style={styles.iconContainer}>
-                  <Text style={styles.iconText}>{item.icon}</Text>
+                  <Text style={styles.iconText}>{item.symbol?.[0] || 'X'}</Text>
                 </View>
                 <View style={styles.gainerHeaderRight}>
-                  <Text style={styles.gainerName}>{item.name}</Text>
-                  <Text style={styles.gainerChange}>{item.change}</Text>
+                  <Text style={styles.gainerName}>{item.symbol || item.name}</Text>
+                  <Text style={[styles.gainerChange, { color: (item.changePercent || 0) >= 0 ? colors.green : colors.red }]}>
+                    {(item.changePercent || 0) >= 0 ? '+' : ''}{(item.changePercent || 0).toFixed(2)}%
+                  </Text>
                 </View>
               </View>
-              <Text style={styles.gainerPrice}>{item.price}</Text>
-              <MiniChart isPositive={item.isPositive} />
+              <Text style={styles.gainerPrice}>{(item.lastPrice || item.price || 0).toLocaleString()}</Text>
+              <MiniChart isPositive={(item.changePercent || 0) >= 0} />
             </TouchableOpacity>
-          ))}
+          )) : (
+            <Text style={{ color: colors.textSecondary, padding: 20 }}>No data available</Text>
+          )}
         </ScrollView>
 
         {/* Categories */}
@@ -215,54 +261,71 @@ export default function HomeScreenLoggedIn({ navigation }) {
         {/* Positions Section */}
         <View style={styles.positionsSection}>
           <View style={styles.positionFilters}>
-            <TouchableOpacity style={[styles.filterButton, styles.filterButtonActive]}>
-              <Text style={styles.filterTextActive}>Open</Text>
+            <TouchableOpacity 
+              style={[styles.filterButton, positionFilter === 'Open' && styles.filterButtonActive]}
+              onPress={() => setPositionFilter('Open')}
+            >
+              <Text style={positionFilter === 'Open' ? styles.filterTextActive : styles.filterText}>Open</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.filterButton}>
-              <Text style={styles.filterText}>Pending</Text>
+            <TouchableOpacity 
+              style={[styles.filterButton, positionFilter === 'Pending' && styles.filterButtonActive]}
+              onPress={() => setPositionFilter('Pending')}
+            >
+              <Text style={positionFilter === 'Pending' ? styles.filterTextActive : styles.filterText}>Pending</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.filterButton}>
-              <Text style={styles.filterText}>Closed</Text>
+            <TouchableOpacity 
+              style={[styles.filterButton, positionFilter === 'Closed' && styles.filterButtonActive]}
+              onPress={() => setPositionFilter('Closed')}
+            >
+              <Text style={positionFilter === 'Closed' ? styles.filterTextActive : styles.filterText}>Closed</Text>
             </TouchableOpacity>
             <View style={{ flex: 1 }} />
-            <Text style={styles.totalAmount}>$1,500</Text>
+            <Text style={styles.totalAmount}>
+              ${Array.isArray(positions) ? positions.reduce((sum, p) => sum + (p.currentValue || 0), 0).toLocaleString() : '0'}
+            </Text>
           </View>
 
-          <TouchableOpacity style={styles.positionCard}>
-            <View style={styles.positionHeader}>
-              <View style={styles.positionLeft}>
-                <View style={styles.positionIcon}>
-                  <Text style={styles.positionIconText}>S</Text>
-                </View>
-                <View>
-                  <Text style={styles.positionSymbol}>SBIN</Text>
-                  <Text style={styles.positionAction}>
-                    <Text style={styles.buyText}>Buy 0.01</Text>
-                    <Text style={styles.atText}> at 4325.90</Text>
-                  </Text>
-                </View>
-              </View>
-              <Text style={styles.positionAmount}>$1,200</Text>
-            </View>
-          </TouchableOpacity>
+          {(() => {
+            // Filter positions based on selected filter
+            let filteredPositions = [];
+            if (Array.isArray(positions)) {
+              if (positionFilter === 'Open') {
+                filteredPositions = positions.filter(p => p.status === 'OPEN' || !p.status);
+              } else if (positionFilter === 'Pending') {
+                filteredPositions = positions.filter(p => p.status === 'PENDING');
+              } else if (positionFilter === 'Closed') {
+                filteredPositions = positions.filter(p => p.status === 'CLOSED' || p.status === 'FILLED');
+              }
+            }
 
-          <TouchableOpacity style={styles.positionCard}>
-            <View style={styles.positionHeader}>
-              <View style={styles.positionLeft}>
-                <View style={styles.positionIcon}>
-                  <Text style={styles.positionIconText}>N</Text>
-                </View>
-                <View>
-                  <Text style={styles.positionSymbol}>NIFTY500</Text>
-                  <Text style={styles.positionAction}>
-                    <Text style={styles.sellText}>Sell 0.01</Text>
-                    <Text style={styles.atText}> at 4325.90</Text>
+            return filteredPositions.length > 0 ? filteredPositions.slice(0, 3).map((position) => (
+              <TouchableOpacity key={position.id} style={styles.positionCard}>
+                <View style={styles.positionHeader}>
+                  <View style={styles.positionLeft}>
+                    <View style={styles.positionIcon}>
+                      <Text style={styles.positionIconText}>{position.instrument?.symbol?.[0] || 'P'}</Text>
+                    </View>
+                    <View>
+                      <Text style={styles.positionSymbol}>{position.instrument?.symbol || 'Unknown'}</Text>
+                      <Text style={styles.positionAction}>
+                        <Text style={position.side === 'BUY' ? styles.buyText : styles.sellText}>
+                          {position.side} {position.quantity}
+                        </Text>
+                        <Text style={styles.atText}> at {position.avgPrice?.toFixed(2)}</Text>
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.positionAmount, { color: (position.unrealizedPnl || 0) >= 0 ? colors.green : colors.red }]}>
+                    ${(position.currentValue || 0).toLocaleString()}
                   </Text>
                 </View>
-              </View>
-              <Text style={styles.positionAmount}>$300</Text>
-            </View>
-          </TouchableOpacity>
+              </TouchableOpacity>
+            )) : (
+              <Text style={{ color: colors.textSecondary, padding: 20, textAlign: 'center' }}>
+                No {positionFilter.toLowerCase()} positions
+              </Text>
+            );
+          })()}
         </View>
       </ScrollView>
 

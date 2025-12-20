@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,20 +6,17 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Svg, Path, Polyline } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import RegisteredNavbar from '../components/RegisteredNavbar';
 import UnregisteredNavbar from '../components/UnregisteredNavbar';
+import { instrumentService, watchlistService } from '../services';
 
-const gainersData = [
-  { name: 'AxisBank', price: '40,059.83', change: '+0.81%', isPositive: true, icon: 'A' },
-  { name: 'SBIN', price: '40,059.83', change: '+0.81%', isPositive: true, icon: 'S' },
-  { name: 'NIFTY50', price: '40,059', change: '+0.81%', isPositive: true, icon: 'N' },
-];
-
-const categories = ['Crypto', 'MCX', 'Forex', 'NSE', 'Equity', 'Commodity'];
+const categories = ['Crypto', 'MCX', 'MCX2', 'Forex', 'NSE', 'Equity', 'Commodity'];
 
 // Mini chart component
 const MiniChart = ({ isPositive }) => {
@@ -43,6 +40,64 @@ export default function TradeScreen({ route, navigation }) {
   const { isLoggedIn = false } = route?.params || {};
   const [activeTab, setActiveTab] = useState('Top gainers');
   const [selectedCategory, setSelectedCategory] = useState('Crypto');
+  const [topMovers, setTopMovers] = useState([]);
+  const [instruments, setInstruments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetchData();
+  }, [activeTab]);
+
+  useEffect(() => {
+    fetchInstruments();
+  }, [selectedCategory]);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      console.log('Fetching top movers...');
+      const moversRes = await instrumentService.getTopMovers();
+      console.log('Top movers response:', moversRes);
+      // Handle response: { data: [...] }
+      const data = Array.isArray(moversRes?.data) ? moversRes.data : [];
+      setTopMovers(data);
+      
+      if (data.length === 0 && moversRes.success) {
+        setError('No market data available. This is normal if the database is not seeded yet.');
+      }
+    } catch (err) {
+      console.log('Error fetching top movers (this is normal if not authenticated):', err.message);
+      setError('Unable to load market data. Please login to view live prices.');
+      setTopMovers([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchInstruments = async () => {
+    try {
+      console.log('Fetching instruments for category:', selectedCategory);
+      // Backend uses 'search' parameter for filtering
+      const res = await instrumentService.getInstruments({ search: selectedCategory });
+      console.log('Instruments response:', res);
+      // Handle response: { data: [...] }
+      const data = Array.isArray(res?.data) ? res.data : [];
+      setInstruments(data);
+    } catch (err) {
+      console.log('Error fetching instruments (this is normal if not authenticated):', err.message);
+      setInstruments([]);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchData();
+    await fetchInstruments();
+    setRefreshing(false);
+  };
 
   return (
     <View style={styles.container}>
@@ -110,60 +165,111 @@ export default function TradeScreen({ route, navigation }) {
       </View>
 
       {/* Gainers List */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          style={styles.gainersScrollView}
-          contentContainerStyle={styles.gainersListContainer}
-        >
-          {gainersData.map((item) => (
-            <TouchableOpacity
-              key={item.name}
-              style={styles.gainerCard}
-              onPress={() => navigation.navigate('Chart', { symbol: item.name })}
-            >
-              <View style={styles.gainerHeader}>
-                <View style={styles.iconContainer}>
-                  <Text style={styles.iconText}>{item.icon}</Text>
-                </View>
-                <View style={styles.gainerHeaderRight}>
-                  <Text style={styles.gainerName}>{item.name}</Text>
-                  <Text style={styles.gainerChange}>{item.change}</Text>
-                </View>
-              </View>
-              <Text style={styles.gainerPrice}>{item.price}</Text>
-              <MiniChart isPositive={item.isPositive} />
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.green} />}
+      >
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.green} />
+            <Text style={styles.loadingText}>Loading...</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.errorContainer}>
+            <Ionicons name="cloud-offline-outline" size={48} color={colors.textSecondary} />
+            <Text style={styles.errorText}>{error}</Text>
+            <Text style={styles.errorSubText}>Make sure the backend server is running on port 3000</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
+              <Text style={styles.retryButtonText}>Retry</Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
+          </View>
+        ) : (
+          <>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={styles.gainersScrollView}
+              contentContainerStyle={styles.gainersListContainer}
+            >
+              {topMovers.length > 0 ? topMovers.map((item) => (
+                <TouchableOpacity
+                  key={item.id || item.symbol}
+                  style={styles.gainerCard}
+                  onPress={() => navigation.navigate('Chart', { symbol: item.symbol, instrumentId: item.id })}
+                >
+                  <View style={styles.gainerHeader}>
+                    <View style={styles.iconContainer}>
+                      <Text style={styles.iconText}>{item.symbol?.[0] || 'X'}</Text>
+                    </View>
+                    <View style={styles.gainerHeaderRight}>
+                      <Text style={styles.gainerName}>{item.symbol || item.name}</Text>
+                      <Text style={[styles.gainerChange, { color: (item.changePercent || 0) >= 0 ? colors.green : colors.red }]}>
+                        {(item.changePercent || 0) >= 0 ? '+' : ''}{(item.changePercent || 0).toFixed(2)}%
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.gainerPrice}>{(item.lastPrice || item.price || 0).toLocaleString()}</Text>
+                  <MiniChart isPositive={(item.changePercent || 0) >= 0} />
+                </TouchableOpacity>
+              )) : (
+                <Text style={{ color: colors.textSecondary, padding: 20 }}>No data available</Text>
+              )}
+            </ScrollView>
 
-        {/* Categories */}
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          style={styles.categoriesContainer}
-        >
-          {categories.map((category) => (
-            <TouchableOpacity
-              key={category}
-              style={[
-                styles.categoryButton,
-                selectedCategory === category && styles.categoryButtonActive,
-              ]}
-              onPress={() => setSelectedCategory(category)}
+            {/* Categories */}
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={styles.categoriesContainer}
             >
-              <Text
-                style={[
-                  styles.categoryText,
-                  selectedCategory === category && styles.categoryTextActive,
-                ]}
+              {categories.map((category) => (
+                <TouchableOpacity
+                  key={category}
+                  style={[
+                    styles.categoryButton,
+                    selectedCategory === category && styles.categoryButtonActive,
+                  ]}
+                  onPress={() => setSelectedCategory(category)}
+                >
+                  <Text
+                    style={[
+                      styles.categoryText,
+                      selectedCategory === category && styles.categoryTextActive,
+                    ]}
+                  >
+                    {category}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {/* Instruments List */}
+            {instruments.map((item) => (
+              <TouchableOpacity
+                key={item.id || item.symbol}
+                style={styles.instrumentCard}
+                onPress={() => navigation.navigate('Chart', { symbol: item.symbol, instrumentId: item.id })}
               >
-                {category}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+                <View style={styles.instrumentLeft}>
+                  <View style={styles.instrumentIcon}>
+                    <Text style={styles.instrumentIconText}>{item.symbol?.[0] || 'X'}</Text>
+                  </View>
+                  <View>
+                    <Text style={styles.instrumentSymbol}>{item.symbol}</Text>
+                    <Text style={styles.instrumentName}>{item.name}</Text>
+                  </View>
+                </View>
+                <View style={styles.instrumentRight}>
+                  <Text style={styles.instrumentPrice}>{(item.lastPrice || 0).toLocaleString()}</Text>
+                  <Text style={[styles.instrumentChange, { color: (item.changePercent || 0) >= 0 ? colors.green : colors.red }]}>
+                    {(item.changePercent || 0) >= 0 ? '+' : ''}{(item.changePercent || 0).toFixed(2)}%
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </>
+        )}
 
         {/* Crypto List */}
         <View style={styles.cryptoList}>
@@ -487,5 +593,48 @@ const styles = StyleSheet.create({
   },
   floatingButtonText: {
     fontSize: 24,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  loadingText: {
+    color: colors.textSecondary,
+    marginTop: 12,
+    fontSize: 14,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 80,
+    paddingHorizontal: 20,
+  },
+  errorText: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  errorSubText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: colors.green,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 20,
+  },
+  retryButtonText: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

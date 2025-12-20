@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,18 +6,42 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
-
-const alerts = [
-  { id: 1, symbol: 'SBIN', action: 'Buy 0.01', price: '4325.90', status: 'Placed' },
-  { id: 2, symbol: 'SBIN', action: 'Buy 0.01', price: '4325.90', status: 'Placed' },
-  { id: 3, symbol: 'SBIN', action: 'Buy 0.01', price: '4325.90', status: 'Placed' },
-  { id: 4, symbol: 'SBIN', action: 'Buy 0.01', price: '4325.90', status: 'Placed' },
-];
+import { orderService } from '../services';
 
 export default function AlertScreen({ navigation }) {
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Fetch pending orders as alerts (price alerts would typically be pending orders)
+  const fetchAlerts = async () => {
+    try {
+      const response = await orderService.getOrders({ status: 'PENDING' });
+      if (response.success) {
+        setAlerts(response.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching alerts:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAlerts();
+  }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchAlerts();
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
@@ -35,22 +59,41 @@ export default function AlertScreen({ navigation }) {
       </View>
 
       {/* Alerts List */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {alerts.map((alert) => (
-          <TouchableOpacity key={alert.id} style={styles.alertCard}>
-            <View style={styles.iconContainer}>
-              <Text style={styles.iconText}>S</Text>
-            </View>
-            <View style={styles.alertContent}>
-              <Text style={styles.symbol}>{alert.symbol}</Text>
-              <Text style={styles.action}>
-                <Text style={styles.buyText}>{alert.action}</Text>
-                <Text style={styles.priceText}> at {alert.price}</Text>
-              </Text>
-            </View>
-            <Text style={styles.status}>{alert.status}</Text>
-          </TouchableOpacity>
-        ))}
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.textPrimary} />
+        }
+      >
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : alerts.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="notifications-off-outline" size={48} color={colors.textSecondary} />
+            <Text style={styles.emptyText}>No price alerts set</Text>
+          </View>
+        ) : (
+          alerts.map((alert) => (
+            <TouchableOpacity key={alert.id} style={styles.alertCard}>
+              <View style={styles.iconContainer}>
+                <Text style={styles.iconText}>{alert.instrument?.symbol?.[0] || 'A'}</Text>
+              </View>
+              <View style={styles.alertContent}>
+                <Text style={styles.symbol}>{alert.instrument?.symbol || 'Unknown'}</Text>
+                <Text style={styles.action}>
+                  <Text style={alert.side === 'BUY' ? styles.buyText : styles.sellText}>
+                    {alert.side} {alert.quantity}
+                  </Text>
+                  <Text style={styles.priceText}> at {alert.price?.toFixed(2)}</Text>
+                </Text>
+              </View>
+              <Text style={styles.status}>{alert.status}</Text>
+            </TouchableOpacity>
+          ))
+        )}
       </ScrollView>
 
       {/* Floating Add Button */}
@@ -155,5 +198,26 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  emptyText: {
+    color: colors.textSecondary,
+    fontSize: 16,
+    marginTop: 16,
+  },
+  sellText: {
+    color: colors.red,
+    fontWeight: '500',
   },
 });

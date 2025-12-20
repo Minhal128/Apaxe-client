@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,17 +6,100 @@ import {
   TouchableOpacity,
   StatusBar,
   Modal,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
+import { orderService } from '../services';
+import SearchCoinModal from './SearchCoinModal';
 
-export default function CreateOrderModal({ visible, onClose, navigation, isLoggedIn = false }) {
-  const [orderType, setOrderType] = useState('Market order');
-  const [quantity, setQuantity] = useState('NIFTY 500');
+export default function CreateOrderModal({ 
+  visible, 
+  onClose, 
+  navigation, 
+  isLoggedIn = false,
+  instrument = null,
+  currentPrice = 0,
+}) {
+  const [orderType, setOrderType] = useState('MARKET');
+  const [quantity, setQuantity] = useState(1); // Default to minimum quantity
   const [sl, setSl] = useState(0);
   const [tp, setTp] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [selectedInstrument, setSelectedInstrument] = useState(instrument);
+  const [searchVisible, setSearchVisible] = useState(false);
+
+  useEffect(() => {
+    setSelectedInstrument(instrument);
+  }, [instrument]);
+
+  const activeInstrument = selectedInstrument || instrument;
+  
+  // Get bid/ask prices from instrument or use currentPrice
+  // If we selected a new instrument from search, it might only have lastPrice
+  const basePrice = activeInstrument?.lastPrice || activeInstrument?.currentPrice || currentPrice || 0;
+  const bidPrice = activeInstrument?.bidPrice || basePrice || 0;
+  const askPrice = activeInstrument?.askPrice || basePrice || 0;
+  
+  const symbolName = activeInstrument?.symbol || activeInstrument?.name || 'Select Instrument';
+  const instrumentId = activeInstrument?.id;
 
   const prices = [-0.5, -0.1, -0.01, 0.49, +0.01, +0.1, +0.5];
+
+  // Format price for display
+  const formatPrice = (price) => {
+    if (!price || price === 0) return '0.00';
+    if (price >= 1000) return price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return price.toFixed(5);
+  };
+
+  const handleInstrumentSelect = (item) => {
+    setSelectedInstrument(item);
+    setSearchVisible(false);
+  };
+
+  const placeOrder = async (side) => {
+    if (!isLoggedIn) {
+      onClose();
+      navigation.navigate('Login');
+      return;
+    }
+
+    if (!instrumentId) {
+      Alert.alert('Error', 'Please select an instrument');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      const orderData = {
+        instrumentId,
+        side, // 'BUY' or 'SELL'
+        orderType: orderType, // Backend validation expects orderType
+        quantity,
+        price: orderType === 'LIMIT' ? (side === 'BUY' ? bidPrice : askPrice) : undefined,
+        isIntraday: true, // Backend expects isIntraday instead of productType
+      };
+
+      console.log('Placing order:', orderData);
+      
+      const response = await orderService.placeOrder(orderData);
+      
+      if (response.success) {
+        Alert.alert('Success', `${side} order placed successfully!`);
+        onClose();
+      } else {
+        Alert.alert('Error', response.message || 'Failed to place order');
+      }
+    } catch (error) {
+      console.error('Order placement error:', error);
+      Alert.alert('Error', error.message || 'Failed to place order');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <Modal
@@ -36,20 +119,26 @@ export default function CreateOrderModal({ visible, onClose, navigation, isLogge
 
           {/* Order Type and Quantity */}
           <View style={styles.row}>
-            <View style={styles.dropdown}>
-              <Text style={styles.dropdownText}>{orderType}</Text>
+            <TouchableOpacity 
+              style={styles.dropdown}
+              onPress={() => setOrderType(orderType === 'MARKET' ? 'LIMIT' : 'MARKET')}
+            >
+              <Text style={styles.dropdownText}>{orderType === 'MARKET' ? 'Market order' : 'Limit order'}</Text>
               <Ionicons name="chevron-down" size={16} color={colors.textPrimary} />
-            </View>
-            <View style={styles.dropdown}>
-              <Text style={styles.dropdownText}>{quantity}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.dropdown}
+              onPress={() => setSearchVisible(true)}
+            >
+              <Text style={styles.dropdownText}>{symbolName}</Text>
               <Ionicons name="chevron-down" size={16} color={colors.textPrimary} />
-            </View>
+            </TouchableOpacity>
           </View>
 
-          {/* Prices */}
+          {/* Prices - Bid and Ask */}
           <View style={styles.pricesContainer}>
-            <Text style={styles.priceValue}>0.93545°</Text>
-            <Text style={[styles.priceValue, { color: colors.red }]}>0.93545°</Text>
+            <Text style={styles.priceValue}>{formatPrice(bidPrice)}</Text>
+            <Text style={[styles.priceValue, { color: colors.red }]}>{formatPrice(askPrice)}</Text>
           </View>
 
           {/* Price Adjustments */}
@@ -71,17 +160,17 @@ export default function CreateOrderModal({ visible, onClose, navigation, isLogge
             <View style={styles.control}>
               <TouchableOpacity 
                 style={styles.controlButton}
-                onPress={() => setSl(Math.max(0, sl - 1))}
+                onPress={() => setQuantity(Math.max(1, quantity - 1))} // Decrement by 1
               >
                 <Ionicons name="remove" size={20} color={colors.textPrimary} />
               </TouchableOpacity>
               <View style={styles.controlCenter}>
-                <Text style={styles.controlLabel}>SL</Text>
-                <Text style={styles.controlValue}>{sl}</Text>
+                <Text style={styles.controlLabel}>Qty</Text>
+                <Text style={styles.controlValue}>{quantity}</Text>
               </View>
               <TouchableOpacity 
                 style={styles.controlButton}
-                onPress={() => setSl(sl + 1)}
+                onPress={() => setQuantity(quantity + 1)} // Increment by 1
               >
                 <Ionicons name="add" size={20} color={colors.textPrimary} />
               </TouchableOpacity>
@@ -111,16 +200,26 @@ export default function CreateOrderModal({ visible, onClose, navigation, isLogge
           {isLoggedIn ? (
             <View style={styles.actionButtons}>
               <TouchableOpacity 
-                style={[styles.actionButton, styles.sellButton]}
-                onPress={onClose}
+                style={[styles.actionButton, styles.sellButton, loading && styles.disabledButton]}
+                onPress={() => placeOrder('SELL')}
+                disabled={loading}
               >
-                <Text style={styles.actionButtonText}>Sell</Text>
+                {loading ? (
+                  <ActivityIndicator size="small" color={colors.textPrimary} />
+                ) : (
+                  <Text style={styles.actionButtonText}>Sell</Text>
+                )}
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.actionButton, styles.buyButton]}
-                onPress={onClose}
+                style={[styles.actionButton, styles.buyButton, loading && styles.disabledButton]}
+                onPress={() => placeOrder('BUY')}
+                disabled={loading}
               >
-                <Text style={styles.actionButtonText}>Buy</Text>
+                {loading ? (
+                  <ActivityIndicator size="small" color={colors.textPrimary} />
+                ) : (
+                  <Text style={styles.actionButtonText}>Buy</Text>
+                )}
               </TouchableOpacity>
             </View>
           ) : (
@@ -135,6 +234,12 @@ export default function CreateOrderModal({ visible, onClose, navigation, isLogge
             </TouchableOpacity>
           )}
         </View>
+
+        <SearchCoinModal 
+          visible={searchVisible} 
+          onClose={() => setSearchVisible(false)} 
+          onSelect={handleInstrumentSelect}
+        />
       </View>
     </Modal>
   );
@@ -277,5 +382,8 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '600',
+  },
+  disabledButton: {
+    opacity: 0.6,
   },
 });

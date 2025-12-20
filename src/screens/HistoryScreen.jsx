@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,18 +6,52 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
-
-const historyData = [
-  { id: 1, symbol: 'SBIN', type: 'Buy 0.01 at 4325.90', amount: '+$234.00', date: '12-10-25 | 13:01', isPositive: true },
-  { id: 2, symbol: 'SBIN', type: 'Buy 0.01 at 4325.90', amount: '-$234.00', date: '12-10-25 | 13:01', isPositive: false },
-  { id: 3, symbol: 'SBIN', type: 'Buy 0.01 at 4325.90', amount: '-$234.00', date: '12-10-25 | 13:01', isPositive: false },
-  { id: 4, symbol: 'SBIN', type: 'Buy 0.01 at 4325.90', amount: '+$40,034.00', date: '12-10-25 | 13:01', isPositive: true },
-];
+import { tradeService } from '../services';
 
 export default function HistoryScreen({ navigation }) {
+  const [trades, setTrades] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchTrades = async () => {
+    try {
+      const response = await tradeService.getTrades();
+      if (response.success) {
+        setTrades(response.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching trade history:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTrades();
+  }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchTrades();
+  };
+
+  const formatAmount = (amount, side) => {
+    const isPositive = side === 'BUY';
+    const prefix = isPositive ? '+' : '-';
+    return `${prefix}$${Math.abs(amount).toFixed(2)}`;
+  };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return `${date.toLocaleDateString()} | ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
@@ -37,26 +71,45 @@ export default function HistoryScreen({ navigation }) {
       </View>
 
       {/* History List */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {historyData.map((item) => (
-          <View key={item.id} style={styles.historyCard}>
-            <View style={styles.historyLeft}>
-              <View style={styles.iconContainer}>
-                <Ionicons name="swap-horizontal" size={20} color={colors.textPrimary} />
-              </View>
-              <View style={styles.historyInfo}>
-                <Text style={styles.historySymbol}>{item.symbol}</Text>
-                <Text style={styles.historyType}>{item.type}</Text>
-              </View>
-            </View>
-            <View style={styles.historyRight}>
-              <Text style={[styles.historyAmount, item.isPositive ? styles.amountPositive : styles.amountNegative]}>
-                {item.amount}
-              </Text>
-              <Text style={styles.historyDate}>{item.date}</Text>
-            </View>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.textPrimary} />
+        }
+      >
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
           </View>
-        ))}
+        ) : trades.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="receipt-outline" size={48} color={colors.textSecondary} />
+            <Text style={styles.emptyText}>No trade history yet</Text>
+          </View>
+        ) : (
+          trades.map((item) => (
+            <View key={item.id} style={styles.historyCard}>
+              <View style={styles.historyLeft}>
+                <View style={styles.iconContainer}>
+                  <Ionicons name="swap-horizontal" size={20} color={colors.textPrimary} />
+                </View>
+                <View style={styles.historyInfo}>
+                  <Text style={styles.historySymbol}>{item.instrument?.symbol || item.symbol}</Text>
+                  <Text style={styles.historyType}>
+                    {item.side} {item.quantity} at {item.price?.toFixed(2)}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.historyRight}>
+                <Text style={[styles.historyAmount, item.side === 'BUY' ? styles.amountPositive : styles.amountNegative]}>
+                  {formatAmount(item.price * item.quantity, item.side)}
+                </Text>
+                <Text style={styles.historyDate}>{formatDate(item.createdAt)}</Text>
+              </View>
+            </View>
+          ))
+        )}
       </ScrollView>
     </View>
   );
@@ -152,5 +205,22 @@ const styles = StyleSheet.create({
   historyDate: {
     fontSize: 12,
     color: colors.textSecondary,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  emptyText: {
+    color: colors.textSecondary,
+    fontSize: 16,
+    marginTop: 16,
   },
 });

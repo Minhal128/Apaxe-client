@@ -13,6 +13,7 @@ import { colors } from '../constants/colors';
 export default function MarketSegmentScreen({ navigation }) {
   const [selectedMarkets, setSelectedMarkets] = useState({
     NSE: true,
+    MCX2: true,
     FOREX: true,
     EQUITY: false,
     STOCK: false,

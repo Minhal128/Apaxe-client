@@ -8,12 +8,38 @@ import {
   StatusBar,
   KeyboardAvoidingView,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
+import { authService } from '../services';
 
 export default function SignUpScreen({ navigation }) {
   const [email, setEmail] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSignUp = async () => {
+    if (!email || !password || !firstName || !lastName) {
+      Alert.alert('Error', 'Please fill all fields');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      await authService.register({ email, password, firstName, lastName });
+      Alert.alert('Success', 'Account created! Please login.', [
+        { text: 'OK', onPress: () => navigation.navigate('Login') }
+      ]);
+    } catch (error) {
+      Alert.alert('Sign Up Failed', error.message || 'Registration failed');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <KeyboardAvoidingView 
@@ -32,7 +58,31 @@ export default function SignUpScreen({ navigation }) {
       <View style={styles.content}>
         <Text style={styles.title}>Hello there,</Text>
         <Text style={styles.title}>Welcome to Apex trading</Text>
-        <Text style={styles.subtitle}>Sign in to start enjoying your movies</Text>
+        <Text style={styles.subtitle}>Sign up to start trading</Text>
+
+        {/* First Name Input */}
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>First Name</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your first name"
+            placeholderTextColor={colors.textSecondary}
+            value={firstName}
+            onChangeText={setFirstName}
+          />
+        </View>
+
+        {/* Last Name Input */}
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>Last Name</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your last name"
+            placeholderTextColor={colors.textSecondary}
+            value={lastName}
+            onChangeText={setLastName}
+          />
+        </View>
 
         {/* Email Input */}
         <View style={styles.inputContainer}>
@@ -48,12 +98,30 @@ export default function SignUpScreen({ navigation }) {
           />
         </View>
 
+        {/* Password Input */}
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>Password</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your password (min 8 chars)"
+            placeholderTextColor={colors.textSecondary}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+        </View>
+
         {/* Continue Button */}
         <TouchableOpacity 
-          style={styles.continueButton}
-          onPress={() => navigation.navigate('OtpVerification')}
+          style={[styles.continueButton, loading && { opacity: 0.7 }]}
+          onPress={handleSignUp}
+          disabled={loading}
         >
-          <Text style={styles.continueButtonText}>Continue</Text>
+          {loading ? (
+            <ActivityIndicator color={colors.textPrimary} />
+          ) : (
+            <Text style={styles.continueButtonText}>Sign Up</Text>
+          )}
         </TouchableOpacity>
 
         {/* Divider */}

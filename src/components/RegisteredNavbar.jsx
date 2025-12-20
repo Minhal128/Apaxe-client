@@ -8,7 +8,10 @@ export default function RegisteredNavbar({ navigation, activeScreen = 'home' }) 
     <View style={styles.bottomNavbar}>
       <TouchableOpacity 
         style={styles.navItem}
-        onPress={() => navigation.navigate('MainTabs')}
+        onPress={() => {
+          console.log('Home button pressed, navigating to MainTabs');
+          navigation.navigate('MainTabs');
+        }}
       >
         <Ionicons 
           name="home" 
@@ -66,7 +69,10 @@ export default function RegisteredNavbar({ navigation, activeScreen = 'home' }) 
       
       <TouchableOpacity 
         style={styles.navItem}
-        onPress={() => navigation.navigate('ProfileLoggedIn')}
+        onPress={() => {
+          console.log('Profile button pressed, navigating to ProfileLoggedIn');
+          navigation.navigate('ProfileLoggedIn');
+        }}
       >
         <Ionicons 
           name="person" 
@@ -99,6 +105,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
+    paddingVertical: 8,
+    minHeight: 60,
   },
   navLabel: {
     fontSize: 11,

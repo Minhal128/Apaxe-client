@@ -8,14 +8,35 @@ import {
   StatusBar,
   KeyboardAvoidingView,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
+import { authService } from '../services';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert('Error', 'Please enter email and password');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      await authService.login(email, password);
+      navigation.navigate('MainTabs');
+    } catch (error) {
+      Alert.alert('Login Failed', error.message || 'Invalid credentials');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <KeyboardAvoidingView 
@@ -80,10 +101,15 @@ export default function LoginScreen({ navigation }) {
 
         {/* Continue Button */}
         <TouchableOpacity 
-          style={styles.continueButton}
-          onPress={() => navigation.navigate('MainTabs')}
+          style={[styles.continueButton, loading && { opacity: 0.7 }]}
+          onPress={handleLogin}
+          disabled={loading}
         >
-          <Text style={styles.continueButtonText}>Continue</Text>
+          {loading ? (
+            <ActivityIndicator color={colors.textPrimary} />
+          ) : (
+            <Text style={styles.continueButtonText}>Continue</Text>
+          )}
         </TouchableOpacity>
 
         {/* Divider */}

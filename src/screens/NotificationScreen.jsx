@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,45 +6,63 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
-
-const notifications = [
-  {
-    id: 1,
-    type: 'trade',
-    title: 'Trade Confirmation',
-    message: 'Your BUY order for NIFTY OCT 24500 CE (Qty: 25) has been executed at $118.50.',
-    time: '1h ago',
-    icon: '📊',
-    iconBg: '#00D68F',
-    unread: true,
-  },
-  {
-    id: 2,
-    type: 'alert',
-    title: 'Margin Alert',
-    message: 'Your margin usage has reached 85% of your available balance.',
-    time: '1h ago',
-    icon: '⚠️',
-    iconBg: '#FF4757',
-    unread: true,
-  },
-  {
-    id: 3,
-    type: 'fund',
-    title: 'Fund Credit Confirmation',
-    message: '$50,000 has been credited to your trading account by your Manager.',
-    time: '1h ago',
-    icon: '💰',
-    iconBg: '#00D68F',
-    unread: true,
-  },
-];
+import { notificationService } from '../services';
 
 export default function NotificationScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('unread');
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, []);
+
+  const fetchNotifications = async () => {
+    try {
+      setLoading(true);
+      const res = await notificationService.getNotifications().catch(() => ({ data: [] }));
+      setNotifications(res?.data || []);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchNotifications();
+    setRefreshing(false);
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await notificationService.markAllAsRead();
+      fetchNotifications();
+    } catch (error) {
+      console.error('Error marking notifications as read:', error);
+    }
+  };
+
+  const filteredNotifications = notifications.filter(n => 
+    activeTab === 'unread' ? !n.isRead : n.isRead
+  );
+
+  const getIconForType = (type) => {
+    switch (type) {
+      case 'TRADE': return '📊';
+      case 'ALERT': return '⚠️';
+      case 'FUND': return '💰';
+      case 'ORDER': return '📝';
+      default: return '🔔';
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -83,22 +101,43 @@ export default function NotificationScreen({ navigation }) {
       </View>
 
       {/* Notifications List */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {notifications.map((notification) => (
-          <TouchableOpacity key={notification.id} style={styles.notificationCard}>
-            <View style={[styles.iconContainer, { backgroundColor: notification.iconBg }]}>
-              <Text style={styles.iconText}>{notification.icon}</Text>
-            </View>
-            <View style={styles.notificationContent}>
-              <View style={styles.notificationHeader}>
-                <Text style={styles.notificationTitle}>{notification.title}</Text>
-                <Text style={styles.notificationTime}>{notification.time}</Text>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.green} />}
+      >
+        {loading ? (
+          <ActivityIndicator size="large" color={colors.green} style={{ marginTop: 50 }} />
+        ) : filteredNotifications.length > 0 ? (
+          filteredNotifications.map((notification) => (
+            <TouchableOpacity key={notification.id} style={styles.notificationCard}>
+              <View style={[styles.iconContainer, { backgroundColor: notification.type === 'ALERT' ? '#FF4757' : '#00D68F' }]}>
+                <Text style={styles.iconText}>{getIconForType(notification.type)}</Text>
               </View>
-              <Text style={styles.notificationMessage}>{notification.message}</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+              <View style={styles.notificationContent}>
+                <View style={styles.notificationHeader}>
+                  <Text style={styles.notificationTitle}>{notification.title}</Text>
+                  <Text style={styles.notificationTime}>
+                    {new Date(notification.createdAt).toLocaleDateString()}
+                  </Text>
+                </View>
+                <Text style={styles.notificationMessage}>{notification.message}</Text>
+              </View>
+            </TouchableOpacity>
+          ))
+        ) : (
+          <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 50 }}>
+            No {activeTab} notifications
+          </Text>
+        )}
       </ScrollView>
+
+      {/* Mark All Read Button */}
+      {activeTab === 'unread' && filteredNotifications.length > 0 && (
+        <TouchableOpacity style={styles.markAllButton} onPress={handleMarkAllRead}>
+          <Text style={styles.markAllText}>Mark all as read</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }

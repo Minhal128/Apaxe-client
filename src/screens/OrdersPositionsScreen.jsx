@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,26 +6,70 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  ActivityIndicator,
+  RefreshControl,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import RegisteredNavbar from '../components/RegisteredNavbar';
-
-const positionsData = [
-  { id: 1, type: 'Buy', symbol: 'Nifty 500', option: 'Option: 4326.90 USDT', size: 'Size', avgPrice: 'Avg. Price', pnl: '+230.00', price: '11,0263.8', profit: '$345.90 (-40%)' },
-  { id: 2, type: 'Short', symbol: 'Nifty 500', option: 'Option: 4326.90 USDT', size: 'Size', avgPrice: 'Avg. Price', pnl: '+230.00', price: '11,0263.8', profit: '$345.90 (-40%)' },
-  { id: 3, type: 'Buy', symbol: 'Nifty 500', option: 'Option: 4326.90 USDT', size: 'Size', avgPrice: 'Avg. Price', pnl: '+230.00', price: '11,0263.8', profit: '$345.90 (-40%)' },
-];
-
-const ordersData = [
-  { id: 1, symbol: 'SBIN', type: 'Buy 0.01 at 4325.90', status: 'Filled', date: '12-10-25 | 13:01' },
-  { id: 2, symbol: 'SBIN', type: 'Buy 0.01 at 4325.90', status: 'Filled', date: '12-10-25 | 13:01' },
-  { id: 3, symbol: 'SBIN', type: 'Buy 0.01 at 4325.90', status: 'Filled', date: '12-10-25 | 13:01' },
-  { id: 4, symbol: 'SBIN', type: 'Buy 0.01 at 4325.90', status: 'Filled', date: '12-10-25 | 13:01' },
-];
+import { positionService, orderService } from '../services';
 
 export default function OrdersPositionsScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('Positions');
+  const [positions, setPositions] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchData = async () => {
+    try {
+      const [positionsRes, ordersRes] = await Promise.all([
+        positionService.getPositions(),
+        orderService.getOrders()
+      ]);
+      
+      if (positionsRes.success) {
+        setPositions(positionsRes.data || []);
+      }
+      if (ordersRes.success) {
+        setOrders(ordersRes.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchData();
+  };
+
+  const handleClosePosition = async (positionId) => {
+    try {
+      const response = await positionService.squareOff(positionId);
+      if (response.success) {
+        Alert.alert('Success', 'Position closed successfully');
+        fetchData();
+      } else {
+        Alert.alert('Error', response.message || 'Failed to close position');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to close position');
+    }
+  };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return `${date.toLocaleDateString()} | ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  };
 
   return (
     <View style={styles.container}>
@@ -65,71 +109,105 @@ export default function OrdersPositionsScreen({ navigation }) {
       </View>
 
       {/* Content */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {activeTab === 'Positions' ? (
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.textPrimary} />
+        }
+      >
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : activeTab === 'Positions' ? (
           <>
-            {positionsData.map((position) => (
-              <View key={position.id} style={styles.positionCard}>
-                <View style={styles.positionHeader}>
-                  <View style={[styles.typeBadge, position.type === 'Buy' ? styles.buyBadge : styles.shortBadge]}>
-                    <Text style={styles.typeBadgeText}>{position.type}</Text>
-                  </View>
-                  <Text style={styles.positionPrice}>{position.price}</Text>
-                </View>
-                
-                <View style={styles.positionBody}>
-                  <Text style={styles.positionSymbol}>{position.symbol}</Text>
-                  <Text style={[styles.positionProfit, position.type === 'Buy' ? styles.profitPositive : styles.profitNegative]}>
-                    {position.profit}
-                  </Text>
-                </View>
-                
-                <Text style={styles.positionOption}>{position.option}</Text>
-                
-                <View style={styles.positionDetails}>
-                  <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>{position.size}</Text>
-                    <Text style={styles.detailLabel}>P&L</Text>
-                  </View>
-                  <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>{position.avgPrice}</Text>
-                    <Text style={[styles.detailValue, styles.profitPositive]}>{position.pnl}</Text>
-                  </View>
-                </View>
-                
-                <View style={styles.positionActions}>
-                  <TouchableOpacity style={styles.actionBtn}>
-                    <Text style={styles.actionBtnText}>Close</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={styles.actionBtn}
-                    onPress={() => navigation.navigate('ModifyPosition')}
-                  >
-                    <Text style={styles.actionBtnText}>Modify</Text>
-                  </TouchableOpacity>
-                </View>
+            {!Array.isArray(positions) || positions.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="layers-outline" size={48} color={colors.textSecondary} />
+                <Text style={styles.emptyText}>No open positions</Text>
               </View>
-            ))}
+            ) : (
+              positions.map((position) => (
+                <View key={position.id} style={styles.positionCard}>
+                  <View style={styles.positionHeader}>
+                    <View style={[styles.typeBadge, position.side === 'BUY' ? styles.buyBadge : styles.shortBadge]}>
+                      <Text style={styles.typeBadgeText}>{position.side}</Text>
+                    </View>
+                    <Text style={styles.positionPrice}>{position.currentPrice?.toFixed(2) || '0.00'}</Text>
+                  </View>
+                  
+                  <View style={styles.positionBody}>
+                    <Text style={styles.positionSymbol}>{position.instrument?.symbol || 'Unknown'}</Text>
+                    <Text style={[styles.positionProfit, position.unrealizedPnl >= 0 ? styles.profitPositive : styles.profitNegative]}>
+                      ${position.unrealizedPnl?.toFixed(2) || '0.00'} ({position.unrealizedPnlPercent?.toFixed(2) || '0'}%)
+                    </Text>
+                  </View>
+                  
+                  <Text style={styles.positionOption}>{position.instrument?.segment?.name || position.instrument?.segment || 'N/A'}</Text>
+                  
+                  <View style={styles.positionDetails}>
+                    <View style={styles.detailItem}>
+                      <Text style={styles.detailLabel}>Qty: {position.quantity}</Text>
+                      <Text style={styles.detailLabel}>P&L</Text>
+                    </View>
+                    <View style={styles.detailItem}>
+                      <Text style={styles.detailLabel}>Avg: {position.avgPrice?.toFixed(2) || '0.00'}</Text>
+                      <Text style={[styles.detailValue, position.unrealizedPnl >= 0 ? styles.profitPositive : styles.profitNegative]}>
+                        {position.unrealizedPnl >= 0 ? '+' : ''}{position.unrealizedPnl?.toFixed(2) || '0.00'}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.positionActions}>
+                    <TouchableOpacity 
+                      style={styles.actionBtn}
+                      onPress={() => handleClosePosition(position.id)}
+                    >
+                      <Text style={styles.actionBtnText}>Close</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={styles.actionBtn}
+                      onPress={() => navigation.navigate('ModifyPosition', { position })}
+                    >
+                      <Text style={styles.actionBtnText}>Modify</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
           </>
         ) : (
           <>
-            {ordersData.map((order) => (
-              <View key={order.id} style={styles.orderCard}>
-                <View style={styles.orderLeft}>
-                  <View style={styles.orderIcon}>
-                    <Ionicons name="swap-horizontal" size={20} color={colors.textPrimary} />
-                  </View>
-                  <View style={styles.orderInfo}>
-                    <Text style={styles.orderSymbol}>{order.symbol}</Text>
-                    <Text style={styles.orderType}>{order.type}</Text>
-                  </View>
-                </View>
-                <View style={styles.orderRight}>
-                  <Text style={styles.orderStatus}>{order.status}</Text>
-                  <Text style={styles.orderDate}>{order.date}</Text>
-                </View>
+            {orders.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="receipt-outline" size={48} color={colors.textSecondary} />
+                <Text style={styles.emptyText}>No orders</Text>
               </View>
-            ))}
+            ) : (
+              orders.map((order) => (
+                <View key={order.id} style={styles.orderCard}>
+                  <View style={styles.orderLeft}>
+                    <View style={styles.orderIcon}>
+                      <Ionicons name="swap-horizontal" size={20} color={colors.textPrimary} />
+                    </View>
+                    <View style={styles.orderInfo}>
+                      <Text style={styles.orderSymbol}>{order.instrument?.symbol || order.symbol}</Text>
+                      <Text style={styles.orderType}>{order.side} {order.quantity} at {order.price?.toFixed(2)}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.orderRight}>
+                    <Text style={[styles.orderStatus, 
+                      order.status === 'FILLED' ? styles.statusFilled : 
+                      order.status === 'PENDING' ? styles.statusPending : styles.statusCancelled
+                    ]}>
+                      {order.status}
+                    </Text>
+                    <Text style={styles.orderDate}>{formatDate(order.createdAt)}</Text>
+                  </View>
+                </View>
+              ))
+            )}
           </>
         )}
       </ScrollView>
@@ -361,5 +439,31 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  emptyText: {
+    color: colors.textSecondary,
+    fontSize: 16,
+    marginTop: 16,
+  },
+  statusFilled: {
+    color: colors.green,
+  },
+  statusPending: {
+    color: colors.yellow || '#FFC107',
+  },
+  statusCancelled: {
+    color: colors.red,
   },
 });

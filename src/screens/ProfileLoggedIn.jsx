@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,67 @@ import {
   TouchableOpacity,
   StatusBar,
   Image,
+  ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { colors } from '../constants/colors';
 import RegisteredNavbar from '../components/RegisteredNavbar';
 import LogoutModal from '../components/LogoutModal';
+import ConnectionTest from '../components/ConnectionTest';
+import { authService } from '../services';
 
 export default function ProfileLoggedIn({ navigation }) {
   const [logoutVisible, setLogoutVisible] = useState(false);
+  const [testVisible, setTestVisible] = useState(false);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchUser();
+  }, []);
+
+  // Refresh user data when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchUser();
+    }, [])
+  );
+
+  const fetchUser = async () => {
+    try {
+      // First try cached user
+      let userData = await authService.getUser();
+      if (userData) {
+        setUser(userData);
+      }
+      
+      // Then fetch fresh data from API
+      const freshData = await authService.getProfile();
+      if (freshData) {
+        setUser(freshData);
+      }
+    } catch (error) {
+      console.error('Error fetching user:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await authService.logout();
+    setLogoutVisible(false);
+    navigation.navigate('InitialHome');
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.green} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -28,15 +81,23 @@ export default function ProfileLoggedIn({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
         {/* User Profile Card */}
         <View style={styles.profileCard}>
           <View style={styles.avatar}>
-            <View style={styles.avatarCircle} />
+            <View style={styles.avatarCircle}>
+              <Text style={{ color: colors.textPrimary, fontSize: 24, fontWeight: 'bold' }}>
+                {user?.firstName?.[0] || 'U'}
+              </Text>
+            </View>
           </View>
           <View style={styles.profileInfo}>
-            <Text style={styles.userName}>Amir Shamzad</Text>
-            <Text style={styles.userId}>user #153547</Text>
+            <Text style={styles.userName}>{user?.firstName} {user?.lastName}</Text>
+            <Text style={styles.userId}>user #{user?.id?.slice(-6) || '000000'}</Text>
           </View>
         </View>
 
@@ -89,6 +150,21 @@ export default function ProfileLoggedIn({ navigation }) {
 
           <TouchableOpacity 
             style={styles.menuItem}
+            onPress={() => setTestVisible(true)}
+          >
+            <View style={styles.menuLeft}>
+              <View style={[styles.menuIcon, { backgroundColor: '#9C27B0' }]}>
+                <Ionicons name="wifi-outline" size={20} color={colors.textPrimary} />
+              </View>
+              <View style={styles.menuText}>
+                <Text style={styles.menuTitle}>Connection Test</Text>
+                <Text style={styles.menuSubtitle}>Test backend API connections</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.menuItem}
             onPress={() => navigation.navigate('AppInfo')}
           >
             <View style={styles.menuLeft}>
@@ -115,14 +191,25 @@ export default function ProfileLoggedIn({ navigation }) {
         </TouchableOpacity>
       </ScrollView>
 
+      {/* Connection Test Modal */}
+      <Modal
+        visible={testVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <View style={styles.modalHeader}>
+          <TouchableOpacity onPress={() => setTestVisible(false)}>
+            <Ionicons name="close" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+        </View>
+        <ConnectionTest />
+      </Modal>
+
       {/* Logout Modal */}
       <LogoutModal 
         visible={logoutVisible}
         onClose={() => setLogoutVisible(false)}
-        onConfirm={() => {
-          setLogoutVisible(false);
-          navigation.navigate('InitialHome');
-        }}
+        onConfirm={handleLogout}
       />
 
       {/* Bottom Navbar */}
@@ -160,6 +247,9 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 16,
+  },
+  scrollContent: {
+    paddingBottom: 100, // Add padding for navbar
   },
   profileCard: {
     flexDirection: 'row',
@@ -234,7 +324,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cardBackground,
     borderRadius: 12,
     padding: 16,
-    marginBottom: 100,
+    marginBottom: 20,
   },
   logoutIcon: {
     width: 40,
@@ -249,5 +339,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FF5252',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    padding: 16,
+    paddingTop: 50,
+    backgroundColor: colors.background,
   },
 });
