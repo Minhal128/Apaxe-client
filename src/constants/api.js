@@ -1,11 +1,10 @@
-// Your computer's WiFi IP address (from ipconfig)
-const LOCAL_IP = '192.168.1.5';
+// Production backend URL
+const PRODUCTION_URL = 'https://clownfish-app-b8ky4.ondigitalocean.app';
 
-// For physical devices, always use the local IP
-// 10.0.2.2 only works in Android Emulator, localhost only in iOS Simulator
+// For production deployment, use the deployed backend
 export const API_CONFIG = {
-  BASE_URL: `http://${LOCAL_IP}:5000/api/v1`,
-  WS_URL: `ws://${LOCAL_IP}:5001/ws`,
+  BASE_URL: `${PRODUCTION_URL}/api/v1`,
+  WS_URL: `wss://clownfish-app-b8ky4.ondigitalocean.app/ws`,
 };
 
 console.log('API Config:', API_CONFIG);

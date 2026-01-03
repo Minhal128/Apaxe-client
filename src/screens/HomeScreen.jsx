@@ -55,38 +55,50 @@ export default function HomeScreen({ navigation }) {
       setLoading(true);
       setError(null);
       setHasApiError(false);
-      console.log('Fetching instruments for segment:', selectedSegment);
+      console.log('Fetching live market data for segment:', selectedSegment);
       
-      // Find the segment ID for the selected segment name
-      const segment = segments.find(s => s.name === selectedSegment || s.displayName === selectedSegment);
-      let params = {};
+      // Map UI segment names to API segment names
+      const segmentMap = {
+        'Crypto': 'CRYPTO',
+        'MCX2': 'MCX',
+        'Forex': 'FOREX',
+        'NSE': 'NSE',
+        'Equity': 'NSE',
+        'Commodity': 'MCX'
+      };
       
-      if (segment) {
-        // Use segment ID for filtering
-        params.segment = segment.id;
-        console.log('Using segment ID:', segment.id);
-      } else if (selectedSegment === 'MCX2') {
-        // Hardcode MCX2 segment ID since we know it exists
-        params.segment = '6946a6bb2056b8e4a5319327';
-        console.log('Using hardcoded MCX2 segment ID');
-      } else {
-        // For other categories, use search (might not return results)
-        params.search = selectedSegment;
-        console.log('Using search for:', selectedSegment);
+      const apiSegment = segmentMap[selectedSegment] || 'ALL';
+      console.log('API segment:', apiSegment);
+      
+      // Fetch live market data from Redis cache via /market/segment endpoint
+      const res = await instrumentService.getMarketWatch(apiSegment);
+      console.log('Market data response:', res);
+      
+      // The response structure is { success: true, data: { instruments: [...], pagination: {...} } }
+      const instruments = res?.data?.instruments || [];
+      
+      // Transform market data to match expected instrument format
+      const transformedData = instruments.map(item => ({
+        id: item.instrumentId || item.id,
+        symbol: item.symbol,
+        name: item.name || item.symbol,
+        lastPrice: item.currentPrice?.ltp || item.ltp || 0,
+        price: item.currentPrice?.ltp || item.ltp || 0,
+        changePercent: item.currentPrice?.changePercent || item.changePercent || 0,
+        volume: item.currentPrice?.volume || item.volume || 0,
+        segment: item.segment
+      }));
+      
+      setInstruments(transformedData);
+      
+      if (transformedData.length > 0) {
+        console.log(`✅ Loaded ${transformedData.length} live instruments`);
       }
       
-      const res = await instrumentService.getInstruments(params);
-      console.log('Instruments response:', res);
-      // Handle response: { data: [...] } - data is the array of instruments
-      const data = Array.isArray(res?.data) ? res.data : [];
-      setInstruments(data);
-      
-      // Don't set error for empty results - just let the UI show "No instruments found"
-      
     } catch (err) {
-      console.log('Error fetching instruments:', err.message);
-      setError('Unable to load instruments. Please check your connection.');
-      setHasApiError(true); // This is a real API error, show retry button
+      console.log('Error fetching market data:', err.message);
+      setError('Unable to load market data. Please check your connection.');
+      setHasApiError(true);
       setInstruments([]);
     } finally {
       setLoading(false);

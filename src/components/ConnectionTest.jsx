@@ -44,8 +44,8 @@ export default function ConnectionTest() {
     );
 
     await testEndpoint('Segments', () => segmentService.getSegments());
-    await testEndpoint('Instruments (Public)', () => instrumentService.getInstruments({ limit: 10 }));
-    await testEndpoint('Top Movers (Public)', () => instrumentService.getTopMovers());
+    await testEndpoint('Live Market Data (CRYPTO)', () => instrumentService.getMarketWatch('CRYPTO'));
+    await testEndpoint('Live Market Data (ALL)', () => instrumentService.getMarketWatch('ALL'));
     await testEndpoint('Search Instruments (Public)', () => instrumentService.searchInstruments('BTC'));
 
     // Test auth endpoints (if logged in)

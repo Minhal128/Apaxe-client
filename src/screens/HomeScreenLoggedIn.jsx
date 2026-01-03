@@ -51,17 +51,36 @@ export default function HomeScreenLoggedIn({ navigation }) {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [userData, dashboardData, moversData, positionsData] = await Promise.all([
+      const [userData, dashboardData, marketData, positionsData] = await Promise.all([
         authService.getUser(),
         userService.getDashboard().catch(() => null),
-        instrumentService.getTopMovers().catch(() => ({ data: [] })),
+        instrumentService.getMarketWatch('ALL').catch(() => ({ data: [] })),
         positionService.getPositions().catch(() => ({ data: [] })),
       ]);
       
       setUser(userData);
       setDashboard(dashboardData?.data);
-      // Handle response: { data: [...] }
-      setTopMovers(Array.isArray(moversData?.data) ? moversData.data : []);
+      
+      // Transform market data and get top movers by absolute change
+      // Response structure: { data: { instruments: [...] } }
+      const instruments = marketData?.data?.instruments || [];
+      const transformedData = instruments.map(item => ({
+        id: item.instrumentId || item.id,
+        symbol: item.symbol,
+        name: item.name || item.symbol,
+        lastPrice: item.currentPrice?.ltp || item.ltp || 0,
+        price: item.currentPrice?.ltp || item.ltp || 0,
+        changePercent: item.currentPrice?.changePercent || item.changePercent || 0,
+        volume: item.currentPrice?.volume || item.volume || 0,
+        segment: item.segment
+      }));
+      
+      // Sort by absolute change percent for top movers
+      const sortedMovers = [...transformedData].sort((a, b) => 
+        Math.abs(b.changePercent) - Math.abs(a.changePercent)
+      ).slice(0, 20);
+      
+      setTopMovers(sortedMovers);
       setPositions(Array.isArray(positionsData?.data) ? positionsData.data : []);
     } catch (error) {
       console.error('Error fetching data:', error);

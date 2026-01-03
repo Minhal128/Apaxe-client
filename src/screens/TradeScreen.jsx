@@ -58,19 +58,40 @@ export default function TradeScreen({ route, navigation }) {
     try {
       setLoading(true);
       setError(null);
-      console.log('Fetching top movers...');
-      const moversRes = await instrumentService.getTopMovers();
-      console.log('Top movers response:', moversRes);
-      // Handle response: { data: [...] }
-      const data = Array.isArray(moversRes?.data) ? moversRes.data : [];
-      setTopMovers(data);
+      console.log('Fetching live market data for top movers...');
       
-      if (data.length === 0 && moversRes.success) {
-        setError('No market data available. This is normal if the database is not seeded yet.');
+      // Fetch all live market data and sort by change percent
+      const marketRes = await instrumentService.getMarketWatch('ALL');
+      console.log('Market data response:', marketRes);
+      
+      // Response structure: { data: { instruments: [...] } }
+      const instruments = marketRes?.data?.instruments || [];
+      
+      // Transform and sort by absolute change percent for top movers
+      const transformedData = instruments.map(item => ({
+        id: item.instrumentId || item.id,
+        symbol: item.symbol,
+        name: item.name || item.symbol,
+        lastPrice: item.currentPrice?.ltp || item.ltp || 0,
+        price: item.currentPrice?.ltp || item.ltp || 0,
+        changePercent: item.currentPrice?.changePercent || item.changePercent || 0,
+        volume: item.currentPrice?.volume || item.volume || 0,
+        segment: item.segment
+      }));
+      
+      // Sort by absolute change percent for top movers
+      const sortedMovers = [...transformedData].sort((a, b) => 
+        Math.abs(b.changePercent) - Math.abs(a.changePercent)
+      ).slice(0, 20);
+      
+      setTopMovers(sortedMovers);
+      
+      if (sortedMovers.length === 0) {
+        setError('No market data available. Waiting for live feed...');
       }
     } catch (err) {
-      console.log('Error fetching top movers (this is normal if not authenticated):', err.message);
-      setError('Unable to load market data. Please login to view live prices.');
+      console.log('Error fetching market data:', err.message);
+      setError('Unable to load market data. Please check your connection.');
       setTopMovers([]);
     } finally {
       setLoading(false);
@@ -79,15 +100,41 @@ export default function TradeScreen({ route, navigation }) {
 
   const fetchInstruments = async () => {
     try {
-      console.log('Fetching instruments for category:', selectedCategory);
-      // Backend uses 'search' parameter for filtering
-      const res = await instrumentService.getInstruments({ search: selectedCategory });
-      console.log('Instruments response:', res);
-      // Handle response: { data: [...] }
-      const data = Array.isArray(res?.data) ? res.data : [];
-      setInstruments(data);
+      console.log('Fetching live market data for category:', selectedCategory);
+      
+      // Map category names to API segment names
+      const segmentMap = {
+        'Crypto': 'CRYPTO',
+        'MCX': 'MCX',
+        'MCX2': 'MCX',
+        'Forex': 'FOREX',
+        'NSE': 'NSE',
+        'Equity': 'NSE',
+        'Commodity': 'MCX'
+      };
+      
+      const apiSegment = segmentMap[selectedCategory] || 'ALL';
+      const res = await instrumentService.getMarketWatch(apiSegment);
+      console.log('Market data response:', res);
+      
+      // Response structure: { data: { instruments: [...] } }
+      const instruments = res?.data?.instruments || [];
+      
+      // Transform market data
+      const transformedData = instruments.map(item => ({
+        id: item.instrumentId || item.id,
+        symbol: item.symbol,
+        name: item.name || item.symbol,
+        lastPrice: item.currentPrice?.ltp || item.ltp || 0,
+        price: item.currentPrice?.ltp || item.ltp || 0,
+        changePercent: item.currentPrice?.changePercent || item.changePercent || 0,
+        volume: item.currentPrice?.volume || item.volume || 0,
+        segment: item.segment
+      }));
+      
+      setInstruments(transformedData);
     } catch (err) {
-      console.log('Error fetching instruments (this is normal if not authenticated):', err.message);
+      console.log('Error fetching market data:', err.message);
       setInstruments([]);
     }
   };

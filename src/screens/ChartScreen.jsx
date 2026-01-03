@@ -168,10 +168,33 @@ export default function ChartScreen({ route, navigation }) {
   // Fetch market watch data
   const fetchMarketWatch = async () => {
     try {
-      const response = await instrumentService.getInstruments({ search: selectedCategory, limit: 10 });
+      // Map category names to API segment names
+      const segmentMap = {
+        'Crypto': 'CRYPTO',
+        'MCX': 'MCX',
+        'MCX2': 'MCX',
+        'Forex': 'FOREX',
+        'NSE': 'NSE',
+        'Equity': 'NSE',
+        'Commodity': 'MCX'
+      };
+      
+      const apiSegment = segmentMap[selectedCategory] || 'ALL';
+      const response = await instrumentService.getMarketWatch(apiSegment, { limit: 10 });
       if (response.success) {
-        // Handle response: { data: [...] } - data is the array of instruments
-        const instruments = Array.isArray(response.data) ? response.data : [];
+        // Response structure: { data: { instruments: [...] } }
+        const instrumentsList = response.data?.instruments || [];
+        // Transform market data to match expected format
+        const instruments = instrumentsList.map(item => ({
+          id: item.instrumentId || item.id,
+          symbol: item.symbol,
+          name: item.name || item.symbol,
+          lastPrice: item.currentPrice?.ltp || item.ltp || 0,
+          price: item.currentPrice?.ltp || item.ltp || 0,
+          changePercent: item.currentPrice?.changePercent || item.changePercent || 0,
+          volume: item.currentPrice?.volume || item.volume || 0,
+          segment: item.segment
+        }));
         setMarketWatchData(instruments);
       }
     } catch (error) {

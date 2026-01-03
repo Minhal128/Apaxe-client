@@ -38,11 +38,35 @@ export default function SearchCoinModal({ visible, onClose, onSelect }) {
       if (searchQuery.length > 0) {
         response = await instrumentService.searchInstruments(searchQuery);
       } else {
-        response = await instrumentService.getInstruments({ search: selectedCategory });
+        // Map category names to API segment names
+        const segmentMap = {
+          'Crypto': 'CRYPTO',
+          'MCX': 'MCX',
+          'MCX2': 'MCX',
+          'Forex': 'FOREX',
+          'NSE': 'NSE',
+          'Equity': 'NSE',
+          'Commodity': 'MCX'
+        };
+        
+        const apiSegment = segmentMap[selectedCategory] || 'ALL';
+        response = await instrumentService.getMarketWatch(apiSegment);
       }
 
       if (response.success) {
-        setResults(response.data || []);
+        // Response structure: { data: { instruments: [...] } } or { data: [...] } for search
+        const instrumentsList = response.data?.instruments || (Array.isArray(response.data) ? response.data : []);
+        // Transform market data to match expected format
+        const results = instrumentsList.map(item => ({
+          id: item.instrumentId || item.id,
+          symbol: item.symbol,
+          name: item.name || item.symbol,
+          lastPrice: item.currentPrice?.ltp || item.ltp || 0,
+          price: item.currentPrice?.ltp || item.ltp || 0,
+          changePercent: item.currentPrice?.changePercent || item.changePercent || 0,
+          segment: item.segment
+        }));
+        setResults(results);
       } else {
         setResults([]);
       }

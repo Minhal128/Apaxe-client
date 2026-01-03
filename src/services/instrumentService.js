@@ -155,6 +155,26 @@ const instrumentService = {
       data: response.data?.ohlc || response.data || []
     };
   },
+
+  // Get real-time market data from Redis cache
+  async getMarketWatch(segment = 'ALL', params = {}) {
+    const query = new URLSearchParams(params).toString();
+    const response = await api.get(`/market/segment/${segment}${query ? `?${query}` : ''}`);
+    
+    if (!response.success && response.error?.code === 'AUTHENTICATION_ERROR') {
+      console.log('Market watch endpoint requires authentication');
+      return {
+        success: false,
+        data: { instruments: [], pagination: { total: 0 } },
+        error: 'Authentication required'
+      };
+    }
+    
+    return {
+      success: response.success,
+      data: response.data || { instruments: [], pagination: { total: 0 } }
+    };
+  },
 };
 
 export { instrumentService };
