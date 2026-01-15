@@ -546,17 +546,17 @@ export default function HomeScreenLoggedIn({ navigation }) {
                         {iconConfig.icon}
                       </Text>
                     </View>
-                  </View>
-                  <View style={styles.cardNameRow}>
-                    <Text style={styles.cardSymbol} numberOfLines={1}>
-                      {displaySymbol}
-                    </Text>
-                    <Text style={[
-                      styles.cardChange,
-                      { color: isPositive ? colors.green : colors.red }
-                    ]}>
-                      {isPositive ? '+' : ''}{item.changePercent.toFixed(2)}%
-                    </Text>
+                    <View style={styles.cardNameRow}>
+                      <Text style={styles.cardSymbol} numberOfLines={1}>
+                        {displaySymbol}
+                      </Text>
+                      <Text style={[
+                        styles.cardChange,
+                        { color: isPositive ? colors.green : colors.red }
+                      ]}>
+                        {isPositive ? '+' : ''}{item.changePercent.toFixed(2)}%
+                      </Text>
+                    </View>
                   </View>
                   <Text style={styles.cardPrice}>{formatPrice(item.price)}</Text>
                   <MiniChart isPositive={isPositive} data={item.priceHistory} />
@@ -884,53 +884,58 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
   },
-  // Top Mover Cards styles (matching TradeOriginalScreen)
+  // Top Mover Cards styles (matching reference design - white cards)
   topMoverCard: {
-    backgroundColor: colors.cardBackground,
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 14,
     width: CARD_WIDTH,
-    minHeight: 130,
+    minHeight: 140,
     marginRight: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   cardHeader: {
-    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
   },
   cardIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
+    marginRight: 8,
   },
   cardIconText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
   },
   cardNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    flex: 1,
   },
   cardSymbol: {
-    color: colors.textPrimary,
-    fontSize: 12,
-    fontWeight: '500',
-    flex: 1,
+    color: '#1A1A2E',
+    fontSize: 13,
+    fontWeight: '600',
   },
   cardChange: {
     fontSize: 11,
     fontWeight: '600',
+    marginLeft: 4,
   },
   cardPrice: {
-    color: colors.textPrimary,
-    fontSize: 16,
+    color: '#1A1A2E',
+    fontSize: 18,
     fontWeight: '700',
+    marginTop: 4,
   },
   // Categories wrapper styles
   categoriesWrapper: {

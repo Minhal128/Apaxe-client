@@ -53,7 +53,7 @@ const getIconConfig = (symbol) => {
 // Mini chart component with gradient fill
 const MiniChart = ({ isPositive, data = [] }) => {
   const chartWidth = 100;
-  const chartHeight = 40;
+  const chartHeight = 35;
   
   const generatePath = () => {
     const points = data.length >= 2 ? data : (isPositive 
@@ -78,17 +78,19 @@ const MiniChart = ({ isPositive, data = [] }) => {
 
   const { linePath, areaPath } = generatePath();
   const gradientId = isPositive ? 'greenGrad' : 'redGrad';
+  const lineColor = isPositive ? '#00C853' : '#FF5252';
+  const gradientColorStart = isPositive ? '#00C853' : '#FF5252';
 
   return (
-    <Svg height={chartHeight} width={chartWidth} style={{ marginTop: 12 }}>
+    <Svg height={chartHeight} width={chartWidth} style={{ marginTop: 8 }}>
       <Defs>
         <LinearGradient id="greenGrad" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={colors.green} stopOpacity="0.4" />
-          <Stop offset="1" stopColor={colors.green} stopOpacity="0.05" />
+          <Stop offset="0" stopColor="#00C853" stopOpacity="0.3" />
+          <Stop offset="1" stopColor="#00C853" stopOpacity="0.05" />
         </LinearGradient>
         <LinearGradient id="redGrad" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={colors.red} stopOpacity="0.4" />
-          <Stop offset="1" stopColor={colors.red} stopOpacity="0.05" />
+          <Stop offset="0" stopColor="#FF5252" stopOpacity="0.3" />
+          <Stop offset="1" stopColor="#FF5252" stopOpacity="0.05" />
         </LinearGradient>
       </Defs>
       <Path
@@ -98,8 +100,8 @@ const MiniChart = ({ isPositive, data = [] }) => {
       <Polyline
         points={linePath.replace('M', '')}
         fill="none"
-        stroke={isPositive ? colors.green : colors.red}
-        strokeWidth="2"
+        stroke={lineColor}
+        strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -305,26 +307,31 @@ export default function TradeOriginalScreen({ route, navigation }) {
         onPress={() => navigateToChart(item)}
         activeOpacity={0.7}
       >
-        {/* Icon and Name Row */}
+        {/* Icon */}
         <View style={styles.cardTopRow}>
-          <View style={[styles.iconContainer, { backgroundColor: iconConfig.bg }]}>
+          <View style={[styles.iconContainer, { backgroundColor: '#F0F0F0' }]}>
             <Text style={[styles.iconText, { color: iconConfig.color }]}>
               {iconConfig.icon}
             </Text>
           </View>
         </View>
         
-        {/* Symbol and Change Row */}
+        {/* Symbol and Change Badge Row */}
         <View style={styles.cardNameRow}>
           <Text style={styles.cardSymbol} numberOfLines={1}>
             {displaySymbol}
           </Text>
-          <Text style={[
-            styles.cardChange,
-            { color: isPositive ? colors.green : colors.red }
+          <View style={[
+            styles.changeBadge,
+            { backgroundColor: isPositive ? 'rgba(0, 200, 83, 0.15)' : 'rgba(255, 82, 82, 0.15)' }
           ]}>
-            {isPositive ? '+' : ''}{item.changePercent.toFixed(2)}%
-          </Text>
+            <Text style={[
+              styles.changeBadgeText,
+              { color: isPositive ? '#00C853' : '#FF5252' }
+            ]}>
+              {isPositive ? '+' : ''}{item.changePercent.toFixed(2)}%
+            </Text>
+          </View>
         </View>
         
         {/* Price */}
@@ -580,51 +587,65 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   topMoverCard: {
-    backgroundColor: colors.cardBackground,
-    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     padding: 16,
     width: CARD_WIDTH,
     minHeight: 160,
     marginRight: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
   },
   cardTopRow: {
     marginBottom: 12,
   },
   iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: '#F5F5F5',
   },
   iconText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
   },
   cardNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-start',
-    marginBottom: 6,
+    marginBottom: 4,
     gap: 8,
   },
   cardSymbol: {
-    color: colors.textPrimary,
+    color: '#1A1A2E',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   cardChange: {
-    fontSize: 13,
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  changeBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  changeBadgeText: {
+    fontSize: 11,
     fontWeight: '600',
   },
   cardPrice: {
-    color: colors.textPrimary,
-    fontSize: 22,
+    color: '#1A1A2E',
+    fontSize: 20,
     fontWeight: '700',
     letterSpacing: -0.5,
   },

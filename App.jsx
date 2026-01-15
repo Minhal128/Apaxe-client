@@ -8,6 +8,7 @@ import { tokenCache } from './src/services/tokenCache';
 import api from './src/services/api';
 import { AuthProvider } from './src/contexts/AuthContext';
 import AppNavigator from './src/navigation/AppNavigator';
+import ErrorBoundary from './src/components/ErrorBoundary';
 
 const publishableKey = 'pk_test_c3VpdGVkLWdlY2tvLTYxLmNsZXJrLmFjY291bnRzLmRldiQ';
 
@@ -56,6 +57,8 @@ export default function App() {
     // Log the linking URL for debugging
     Linking.getInitialURL().then((url) => {
       console.log('Initial URL:', url);
+    }).catch(err => {
+      if (__DEV__) console.error('Error getting initial URL:', err);
     });
     
     // Listen for deep links
@@ -69,17 +72,19 @@ export default function App() {
   }, []);
 
   return (
-    <ClerkProvider tokenCache={tokenCache} publishableKey={publishableKey}>
-      <SafeAreaProvider>
-        <ClerkLoaded>
-          <AuthProvider>
-            <ClerkApiBridge>
-              <StatusBar style="light" />
-              <AppNavigator />
-            </ClerkApiBridge>
-          </AuthProvider>
-        </ClerkLoaded>
-      </SafeAreaProvider>
-    </ClerkProvider>
+    <ErrorBoundary>
+      <ClerkProvider tokenCache={tokenCache} publishableKey={publishableKey}>
+        <SafeAreaProvider>
+          <ClerkLoaded>
+            <AuthProvider>
+              <ClerkApiBridge>
+                <StatusBar style="light" />
+                <AppNavigator />
+              </ClerkApiBridge>
+            </AuthProvider>
+          </ClerkLoaded>
+        </SafeAreaProvider>
+      </ClerkProvider>
+    </ErrorBoundary>
   );
 }

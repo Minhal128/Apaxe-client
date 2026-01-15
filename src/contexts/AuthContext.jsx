@@ -32,7 +32,10 @@ export function AuthProvider({ children }) {
         setIsBackendLoggedIn(false);
       }
     } catch (error) {
-      console.error('Error checking backend auth:', error);
+      // Don't crash on auth check failure - just log and continue
+      if (__DEV__) {
+        console.error('Error checking backend auth:', error);
+      }
       setIsBackendLoggedIn(false);
     } finally {
       setIsLoading(false);
