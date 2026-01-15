@@ -11,30 +11,86 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useUser } from '@clerk/clerk-expo';
 import { colors } from '../constants/colors';
 import { authService } from '../services';
 
 export default function ProfileInfoScreen({ navigation }) {
+  const clerkUserData = useUser();
+  const clerkUser = clerkUserData?.user;
+  const clerkLoaded = clerkUserData?.isLoaded ?? false;
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const fetchUserProfile = async () => {
     try {
       setLoading(true);
-      const userData = await authService.getProfile();
-      if (userData) {
-        setUser(userData);
+      
+      // First try cached user data from backend login
+      const cachedUser = await authService.getUser();
+      if (cachedUser) {
+        console.log('Using cached user data:', cachedUser);
+        setUser(cachedUser);
+        setLoading(false);
+        return;
+      }
+      
+      // Try to get fresh profile from backend API
+      try {
+        const userData = await authService.getProfile();
+        console.log('Backend profile response:', userData);
+        if (userData) {
+          setUser(userData);
+          setLoading(false);
+          return;
+        }
+      } catch (e) {
+        console.log('Backend profile not available:', e.message);
+      }
+      
+      // Fallback to Clerk user data (for Google OAuth users)
+      if (clerkUser) {
+        console.log('Using Clerk user data for profile:', clerkUser.firstName, clerkUser.lastName);
+        setUser({
+          id: clerkUser.id,
+          firstName: clerkUser.firstName || clerkUser.username || 'User',
+          lastName: clerkUser.lastName || '',
+          email: clerkUser.primaryEmailAddress?.emailAddress,
+          phone: clerkUser.primaryPhoneNumber?.phoneNumber,
+          imageUrl: clerkUser.imageUrl,
+        });
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
+      // On error, try Clerk user
+      if (clerkUser) {
+        setUser({
+          id: clerkUser.id,
+          firstName: clerkUser.firstName || clerkUser.username || 'User',
+          lastName: clerkUser.lastName || '',
+          email: clerkUser.primaryEmailAddress?.emailAddress,
+          phone: clerkUser.primaryPhoneNumber?.phoneNumber,
+          imageUrl: clerkUser.imageUrl,
+        });
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchUserProfile();
-  }, []);
+    // Wait for Clerk to be loaded before fetching
+    if (clerkLoaded) {
+      fetchUserProfile();
+    }
+  }, [clerkLoaded]);
+  
+  // Update user when Clerk user changes
+  useEffect(() => {
+    if (clerkUser && !user) {
+      fetchUserProfile();
+    }
+  }, [clerkUser]);
 
   // Refresh profile data when screen comes into focus
   useFocusEffect(
@@ -72,20 +128,26 @@ export default function ProfileInfoScreen({ navigation }) {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Profile Image */}
         <View style={styles.profileImageContainer}>
-          <View style={styles.profileImage} />
+          <View style={styles.profileImage}>
+            <Text style={styles.profileInitial}>
+              {user?.firstName?.[0]?.toUpperCase() || 'U'}
+            </Text>
+          </View>
         </View>
 
         {/* Profile Details */}
         <View style={styles.detailsSection}>
           <View style={styles.detailCard}>
             <Text style={styles.detailValue}>
-              {user?.firstName || ''} {user?.lastName || ''}
+              {user?.firstName && user?.lastName 
+                ? `${user.firstName} ${user.lastName}` 
+                : user?.firstName || 'Not set'}
             </Text>
             <Text style={styles.detailLabel}>Full name</Text>
           </View>
 
           <View style={styles.detailCard}>
-            <Text style={styles.detailValue}>#{user?.id || 'N/A'}</Text>
+            <Text style={styles.detailValue}>#{user?.id?.slice(-6) || 'N/A'}</Text>
             <Text style={styles.detailLabel}>Client ID</Text>
           </View>
 
@@ -95,7 +157,7 @@ export default function ProfileInfoScreen({ navigation }) {
           </View>
 
           <View style={styles.detailCard}>
-            <Text style={styles.detailValue}>{user?.phone || 'N/A'}</Text>
+            <Text style={styles.detailValue}>{user?.phone || user?.phoneNumber || 'N/A'}</Text>
             <Text style={styles.detailLabel}>Phone number</Text>
           </View>
 
@@ -163,6 +225,13 @@ const styles = StyleSheet.create({
     height: 100,
     borderRadius: 50,
     backgroundColor: '#5C8FDB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileInitial: {
+    fontSize: 40,
+    fontWeight: '700',
+    color: colors.textPrimary,
   },
   detailsSection: {
     marginBottom: 32,

@@ -18,6 +18,38 @@ import RegisteredNavbar from '../components/RegisteredNavbar';
 import UnregisteredNavbar from '../components/UnregisteredNavbar';
 import { instrumentService, positionService, userService, segmentService, websocketService } from '../services';
 
+// Deterministic pseudo-random generator for dummy chart data
+function createSeededRNG(seedString) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < seedString.length; i++) {
+    h = Math.imul(h ^ seedString.charCodeAt(i), 16777619) >>> 0;
+  }
+  let state = h >>> 0;
+  return function () {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return (state & 0xfffffff) / 0x10000000;
+  };
+}
+
+function generateDummyOHLC(seedString, count = 60) {
+  const rnd = createSeededRNG(String(seedString || 'default'));
+  // base price derived from seed
+  let base = 100 + Math.floor(rnd() * 10000);
+  const candles = [];
+  let prevClose = base;
+  for (let i = 0; i < count; i++) {
+    const changePct = (rnd() - 0.5) * 0.03; // +/-1.5%
+    const close = Math.max(0.0001, prevClose * (1 + changePct));
+    const high = Math.max(close, prevClose) * (1 + rnd() * 0.01);
+    const low = Math.min(close, prevClose) * (1 - rnd() * 0.01);
+    const positive = close >= prevClose;
+    const open = prevClose;
+    candles.push({ high: Number(high.toFixed(2)), low: Number(low.toFixed(2)), positive, close: Number(close.toFixed(2)), open: Number(open.toFixed(2)), volume: Math.round(rnd() * 1000000) });
+    prevClose = close;
+  }
+  return candles;
+}
+
 const { width } = Dimensions.get('window');
 
 const timeframes = ['1m', '5m', '15m', '1h', '1d', 'More'];
@@ -237,21 +269,10 @@ export default function ChartScreen({ route, navigation }) {
     fetchMarketWatch();
   }, [selectedCategory]);
 
-  // Generate placeholder candlestick data if none from API
-  const chartCandlesticks = candlestickData.length > 0 ? candlestickData : [
-    { high: 64500, low: 63800, positive: true },
-    { high: 64200, low: 63500, positive: false },
-    { high: 64800, low: 64000, positive: true },
-    { high: 64600, low: 63900, positive: false },
-    { high: 65000, low: 64200, positive: true },
-    { high: 64900, low: 64100, positive: true },
-    { high: 64700, low: 64000, positive: false },
-    { high: 65200, low: 64500, positive: true },
-    { high: 65100, low: 64400, positive: false },
-    { high: 64800, low: 64200, positive: false },
-    { high: 65300, low: 64600, positive: true },
-    { high: 64900, low: 64300, positive: false },
-  ];
+  // Generate placeholder candlestick data if none from API.
+  // Use a deterministic generator seeded by symbol+instrumentId so each instrument shows unique, realistic-looking candles.
+  const seed = `${symbol || ''}-${instrumentId || ''}`;
+  const chartCandlesticks = candlestickData.length > 0 ? candlestickData : generateDummyOHLC(seed, 120);
 
   // Generate order book data based on instrument price
   const currentPrice = instrumentData?.currentPrice || instrumentData?.lastPrice || instrumentData?.price || 0;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,89 +7,375 @@ import {
   TouchableOpacity,
   StatusBar,
   ActivityIndicator,
+  RefreshControl,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useUser } from '@clerk/clerk-expo';
 import { colors } from '../constants/colors';
-import { Svg, Path, Polyline } from 'react-native-svg';
+import { Svg, Path, Polyline, Defs, LinearGradient, Stop } from 'react-native-svg';
 import RegisteredNavbar from '../components/RegisteredNavbar';
-import { userService, instrumentService, positionService, authService } from '../services';
+import { userService, instrumentService, positionService, authService, watchlistService } from '../services';
 
-const categories = ['Crypto', 'MCX', 'MCX2', 'Forex', 'NSE', 'Equity', 'Commodity'];
+const { width } = Dimensions.get('window');
+const CARD_WIDTH = (width - 60) / 3;
 
-// Mini chart component
-const MiniChart = ({ isPositive }) => {
-  const points = isPositive 
-    ? "0,20 10,18 20,15 30,12 40,10 50,8"
-    : "0,10 10,12 20,15 30,13 40,16 50,20";
+const tabs = ['Top gainers', 'Top losers', 'Most active', 'Favorites'];
+const categories = ['Crypto', 'MCX', 'Forex', 'NSE', 'Equity', 'Commodity'];
+
+// Icon mapping for different symbols
+const ICON_CONFIG = {
+  'BTC': { icon: '₿', color: '#F7931A', bg: '#F7931A20' },
+  'ETH': { icon: '◊', color: '#627EEA', bg: '#627EEA20' },
+  'SOL': { icon: '◎', color: '#00FFA3', bg: '#00FFA320' },
+  'XRP': { icon: '✕', color: '#23292F', bg: '#FFFFFF' },
+  'BNB': { icon: '⬡', color: '#F3BA2F', bg: '#F3BA2F20' },
+  'TRX': { icon: '◈', color: '#FF0013', bg: '#FF001320' },
+  'TRON': { icon: '◈', color: '#FF0013', bg: '#FF001320' },
+  'BITCOIN': { icon: '₿', color: '#F7931A', bg: '#F7931A20' },
+  'BITCOINCASH': { icon: '₿', color: '#8DC351', bg: '#8DC35120' },
+  'CARDANO': { icon: '◉', color: '#0033AD', bg: '#0033AD20' },
+  'DOGECOIN': { icon: 'Ð', color: '#C2A633', bg: '#C2A63320' },
+  'AXIS': { icon: 'A', color: '#97144D', bg: '#FFFFFF' },
+  'AXISBANK': { icon: 'A', color: '#97144D', bg: '#FFFFFF' },
+  'SBIN': { icon: 'S', color: '#0066B2', bg: '#FFFFFF' },
+  'NIFTY': { icon: '◉', color: '#1A1A2E', bg: '#FFFFFF' },
+  'NIFTY50': { icon: '◉', color: '#1A1A2E', bg: '#FFFFFF' },
+  'DEFAULT': { icon: '●', color: '#5B8DEE', bg: '#5B8DEE20' },
+};
+
+// Get icon config for symbol
+const getIconConfig = (symbol) => {
+  const baseSymbol = symbol?.split('/')[0]?.toUpperCase() || '';
+  return ICON_CONFIG[baseSymbol] || ICON_CONFIG.DEFAULT;
+};
+
+// Mini chart component with gradient fill
+const MiniChart = ({ isPositive, data = [] }) => {
+  const chartWidth = 70;
+  const chartHeight = 35;
   
+  const generatePath = () => {
+    const points = data.length >= 2 ? data : (isPositive 
+      ? [22, 20, 18, 16, 14, 12, 10, 8] 
+      : [8, 10, 12, 14, 16, 18, 20, 22]);
+    
+    const maxVal = Math.max(...points);
+    const minVal = Math.min(...points);
+    const range = maxVal - minVal || 1;
+    
+    const pathPoints = points.map((val, i) => {
+      const x = (i / (points.length - 1)) * chartWidth;
+      const y = chartHeight - 5 - ((val - minVal) / range) * (chartHeight - 10);
+      return `${x},${y}`;
+    });
+    
+    const linePath = `M${pathPoints.join(' L')}`;
+    const areaPath = `${linePath} L${chartWidth},${chartHeight} L0,${chartHeight} Z`;
+    
+    return { linePath, areaPath };
+  };
+
+  const { linePath, areaPath } = generatePath();
+  const gradientId = isPositive ? 'greenGradHome' : 'redGradHome';
+
   return (
-    <Svg height="30" width="60" style={{ marginTop: 8 }}>
+    <Svg height={chartHeight} width={chartWidth} style={{ marginTop: 8 }}>
+      <Defs>
+        <LinearGradient id="greenGradHome" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={colors.green} stopOpacity="0.3" />
+          <Stop offset="1" stopColor={colors.green} stopOpacity="0.05" />
+        </LinearGradient>
+        <LinearGradient id="redGradHome" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={colors.red} stopOpacity="0.3" />
+          <Stop offset="1" stopColor={colors.red} stopOpacity="0.05" />
+        </LinearGradient>
+      </Defs>
+      <Path
+        d={areaPath}
+        fill={`url(#${gradientId})`}
+      />
       <Polyline
-        points={points}
+        points={linePath.replace('M', '')}
         fill="none"
         stroke={isPositive ? colors.green : colors.red}
         strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </Svg>
   );
 };
 
+// Format volume to readable string
+const formatVolume = (volume) => {
+  if (!volume) return '0';
+  if (volume >= 1e9) return `${(volume / 1e9).toFixed(1)}B`;
+  if (volume >= 1e6) return `${(volume / 1e6).toFixed(0)}M`;
+  if (volume >= 1e3) return `${(volume / 1e3).toFixed(0)}K`;
+  return volume.toString();
+};
+
+// Format price with proper decimals
+const formatPrice = (price) => {
+  if (!price) return '0.00';
+  if (price >= 10000) {
+    return price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  if (price >= 1) {
+    return price.toFixed(2);
+  }
+  return price.toFixed(4);
+};
+
 export default function HomeScreenLoggedIn({ navigation }) {
+  // Get Clerk user for Google OAuth
+  const clerkUserData = useUser();
+  const clerkUser = clerkUserData?.user;
+  
   const [activeTab, setActiveTab] = useState('Top gainers');
   const [selectedCategory, setSelectedCategory] = useState('Crypto');
-  const [positionFilter, setPositionFilter] = useState('Open'); // Add position filter state
+  const [positionFilter, setPositionFilter] = useState('Open');
   const [loading, setLoading] = useState(true);
+  const [marketLoading, setMarketLoading] = useState(false);
+  const [instrumentsLoading, setInstrumentsLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [user, setUser] = useState(null);
   const [dashboard, setDashboard] = useState(null);
   const [topMovers, setTopMovers] = useState([]);
+  const [instruments, setInstruments] = useState([]);
+  const [allMarketData, setAllMarketData] = useState([]);
   const [positions, setPositions] = useState([]);
+  
+  // Simulated trading balance
+  const [simulatedBalance, setSimulatedBalance] = useState(10000);
+  const [simulatedPositions, setSimulatedPositions] = useState([]);
 
+  // Load simulated balance from AsyncStorage (user-specific)
+  const loadSimulatedData = async (userId) => {
+    try {
+      const userKey = userId || user?.id || user?.email || 'default';
+      const savedBalance = await AsyncStorage.getItem(`simulatedBalance_${userKey}`);
+      const savedPositions = await AsyncStorage.getItem(`simulatedPositions_${userKey}`);
+      if (savedBalance) setSimulatedBalance(parseFloat(savedBalance));
+      if (savedPositions) setSimulatedPositions(JSON.parse(savedPositions));
+    } catch (e) {
+      console.log('Error loading simulated data:', e);
+    }
+  };
+
+  // Fetch initial user data
   useEffect(() => {
-    fetchData();
+    fetchInitialData();
   }, []);
+  
+  // Load simulated data after user is loaded
+  useEffect(() => {
+    if (user?.id || user?.email) {
+      loadSimulatedData(user?.id || user?.email);
+    }
+  }, [user]);
+  
+  // Reload simulated data when screen is focused
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (user?.id || user?.email) {
+        loadSimulatedData(user?.id || user?.email);
+      }
+    });
+    return unsubscribe;
+  }, [navigation, user]);
 
-  const fetchData = async () => {
+  const fetchInitialData = async () => {
     try {
       setLoading(true);
-      const [userData, dashboardData, marketData, positionsData] = await Promise.all([
+      const [userData, dashboardData, positionsData] = await Promise.all([
         authService.getUser(),
         userService.getDashboard().catch(() => null),
-        instrumentService.getMarketWatch('ALL').catch(() => ({ data: [] })),
         positionService.getPositions().catch(() => ({ data: [] })),
       ]);
       
-      setUser(userData);
-      setDashboard(dashboardData?.data);
+      // Use backend user data, or fall back to Clerk user (Google OAuth)
+      if (userData) {
+        setUser(userData);
+      } else if (clerkUser) {
+        console.log('Using Clerk user data for Google OAuth user:', clerkUser.firstName, clerkUser.lastName);
+        setUser({
+          id: clerkUser.id,
+          firstName: clerkUser.firstName || clerkUser.username || 'User',
+          lastName: clerkUser.lastName || '',
+          email: clerkUser.primaryEmailAddress?.emailAddress,
+          phone: clerkUser.primaryPhoneNumber?.phoneNumber,
+          imageUrl: clerkUser.imageUrl,
+        });
+      }
       
-      // Transform market data and get top movers by absolute change
-      // Response structure: { data: { instruments: [...] } }
-      const instruments = marketData?.data?.instruments || [];
-      const transformedData = instruments.map(item => ({
+      setDashboard(dashboardData?.data);
+      setPositions(Array.isArray(positionsData?.data) ? positionsData.data : []);
+    } catch (error) {
+      console.error('Error fetching initial data:', error);
+      // On error, try to use Clerk user
+      if (clerkUser) {
+        setUser({
+          id: clerkUser.id,
+          firstName: clerkUser.firstName || clerkUser.username || 'User',
+          lastName: clerkUser.lastName || '',
+          email: clerkUser.primaryEmailAddress?.emailAddress,
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Refetch data when Clerk user changes
+  useEffect(() => {
+    if (clerkUser && !user) {
+      fetchInitialData();
+    }
+  }, [clerkUser]);
+
+  // Fetch top movers based on active tab
+  const fetchTopMovers = useCallback(async () => {
+    try {
+      setMarketLoading(true);
+      
+      const marketRes = await instrumentService.getMarketWatch('ALL');
+      const allInstruments = marketRes?.data?.instruments || [];
+      
+      // Store all market data for reference
+      const transformedData = allInstruments.map(item => ({
         id: item.instrumentId || item.id,
         symbol: item.symbol,
         name: item.name || item.symbol,
-        lastPrice: item.currentPrice?.ltp || item.ltp || 0,
+        price: item.currentPrice?.ltp || item.ltp || 0,
+        changePercent: item.currentPrice?.changePercent || item.changePercent || 0,
+        volume: item.currentPrice?.volume || item.volume || 0,
+        segment: item.segment,
+        priceHistory: item.priceHistory || []
+      }));
+
+      setAllMarketData(transformedData);
+
+      let sortedMovers = [];
+      
+      switch (activeTab) {
+        case 'Top gainers':
+          sortedMovers = transformedData
+            .filter(item => item.changePercent > 0)
+            .sort((a, b) => b.changePercent - a.changePercent)
+            .slice(0, 10);
+          break;
+        case 'Top losers':
+          sortedMovers = transformedData
+            .filter(item => item.changePercent < 0)
+            .sort((a, b) => a.changePercent - b.changePercent)
+            .slice(0, 10);
+          break;
+        case 'Most active':
+          sortedMovers = transformedData
+            .sort((a, b) => (b.volume || 0) - (a.volume || 0))
+            .slice(0, 10);
+          break;
+        case 'Favorites':
+          try {
+            const watchlistRes = await watchlistService.getDefaultWatchlist();
+            const watchlistInstruments = watchlistRes?.data?.instruments || [];
+            sortedMovers = watchlistInstruments.map(item => ({
+              id: item.instrumentId || item.id,
+              symbol: item.symbol,
+              name: item.name || item.symbol,
+              price: item.currentPrice?.ltp || item.ltp || 0,
+              changePercent: item.currentPrice?.changePercent || item.changePercent || 0,
+              volume: item.currentPrice?.volume || item.volume || 0,
+              segment: item.segment,
+              priceHistory: item.priceHistory || []
+            }));
+          } catch (e) {
+            console.log('Failed to fetch favorites:', e.message);
+            sortedMovers = [];
+          }
+          break;
+        default:
+          sortedMovers = transformedData.slice(0, 10);
+      }
+      
+      setTopMovers(sortedMovers);
+    } catch (err) {
+      console.log('Error fetching top movers:', err.message);
+      setTopMovers([]);
+    } finally {
+      setMarketLoading(false);
+    }
+  }, [activeTab]);
+
+  // Fetch instruments by category/segment
+  const fetchInstruments = useCallback(async () => {
+    try {
+      setInstrumentsLoading(true);
+      
+      const segmentMap = {
+        'Crypto': 'CRYPTO',
+        'MCX': 'MCX',
+        'Forex': 'FOREX',
+        'NSE': 'NSE',
+        'Equity': 'NSE',
+        'Commodity': 'MCX'
+      };
+      
+      const apiSegment = segmentMap[selectedCategory] || 'ALL';
+      const res = await instrumentService.getMarketWatch(apiSegment);
+      const fetchedInstruments = res?.data?.instruments || [];
+      
+      const transformedData = fetchedInstruments.map(item => ({
+        id: item.instrumentId || item.id,
+        symbol: item.symbol,
+        name: item.name || item.symbol,
         price: item.currentPrice?.ltp || item.ltp || 0,
         changePercent: item.currentPrice?.changePercent || item.changePercent || 0,
         volume: item.currentPrice?.volume || item.volume || 0,
         segment: item.segment
       }));
       
-      // Sort by absolute change percent for top movers
-      const sortedMovers = [...transformedData].sort((a, b) => 
-        Math.abs(b.changePercent) - Math.abs(a.changePercent)
-      ).slice(0, 20);
-      
-      setTopMovers(sortedMovers);
-      setPositions(Array.isArray(positionsData?.data) ? positionsData.data : []);
-    } catch (error) {
-      console.error('Error fetching data:', error);
+      setInstruments(transformedData);
+    } catch (err) {
+      console.log('Error fetching instruments:', err.message);
+      setInstruments([]);
     } finally {
-      setLoading(false);
+      setInstrumentsLoading(false);
     }
+  }, [selectedCategory]);
+
+  useEffect(() => {
+    fetchTopMovers();
+  }, [fetchTopMovers]);
+
+  useEffect(() => {
+    fetchInstruments();
+  }, [fetchInstruments]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([fetchInitialData(), fetchTopMovers(), fetchInstruments()]);
+    if (user?.id || user?.email) {
+      loadSimulatedData(user?.id || user?.email);
+    }
+    setRefreshing(false);
   };
 
-  const balance = dashboard?.balance || 0;
+  // Navigate to ChartScreen when clicking on a coin
+  const navigateToChart = (item) => {
+    navigation.navigate('Chart', { 
+      symbol: item.symbol, 
+      instrumentId: item.id,
+      isLoggedIn: true,
+      userId: user?.id || user?.email || null
+    });
+  };
+
+  // Use simulated balance if available, otherwise use dashboard balance
+  const balance = simulatedBalance || dashboard?.balance || 10000;
   const pnl = dashboard?.todayPnl || 0;
   const pnlPercent = dashboard?.todayPnlPercent || 0;
 
@@ -217,65 +503,146 @@ export default function HomeScreenLoggedIn({ navigation }) {
       </View>
 
       {/* Content */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Gainers Cards */}
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          style={styles.gainersScrollView}
-          contentContainerStyle={styles.gainersListContainer}
-        >
-          {topMovers.length > 0 ? topMovers.map((item) => (
-            <TouchableOpacity
-              key={item.id || item.symbol}
-              style={styles.gainerCard}
-              onPress={() => navigation.navigate('Chart', { symbol: item.symbol, instrumentId: item.id, isLoggedIn: true })}
-            >
-              <View style={styles.gainerHeader}>
-                <View style={styles.iconContainer}>
-                  <Text style={styles.iconText}>{item.symbol?.[0] || 'X'}</Text>
-                </View>
-                <View style={styles.gainerHeaderRight}>
-                  <Text style={styles.gainerName}>{item.symbol || item.name}</Text>
-                  <Text style={[styles.gainerChange, { color: (item.changePercent || 0) >= 0 ? colors.green : colors.red }]}>
-                    {(item.changePercent || 0) >= 0 ? '+' : ''}{(item.changePercent || 0).toFixed(2)}%
-                  </Text>
-                </View>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh} 
+            tintColor={colors.green}
+            colors={[colors.green]}
+          />
+        }
+      >
+        {/* Top Movers Cards */}
+        {marketLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.green} />
+            <Text style={styles.loadingText}>Loading market data...</Text>
+          </View>
+        ) : (
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            style={styles.gainersScrollView}
+            contentContainerStyle={styles.gainersListContainer}
+          >
+            {topMovers.length > 0 ? topMovers.map((item, index) => {
+              const iconConfig = getIconConfig(item.symbol);
+              const isPositive = item.changePercent >= 0;
+              const displaySymbol = item.symbol?.split('/')[0] || item.symbol;
+              
+              return (
+                <TouchableOpacity
+                  key={item.id || `${item.symbol}-${index}`}
+                  style={styles.topMoverCard}
+                  onPress={() => navigateToChart(item)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.cardHeader}>
+                    <View style={[styles.cardIconContainer, { backgroundColor: iconConfig.bg }]}>
+                      <Text style={[styles.cardIconText, { color: iconConfig.color }]}>
+                        {iconConfig.icon}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.cardNameRow}>
+                    <Text style={styles.cardSymbol} numberOfLines={1}>
+                      {displaySymbol}
+                    </Text>
+                    <Text style={[
+                      styles.cardChange,
+                      { color: isPositive ? colors.green : colors.red }
+                    ]}>
+                      {isPositive ? '+' : ''}{item.changePercent.toFixed(2)}%
+                    </Text>
+                  </View>
+                  <Text style={styles.cardPrice}>{formatPrice(item.price)}</Text>
+                  <MiniChart isPositive={isPositive} data={item.priceHistory} />
+                </TouchableOpacity>
+              );
+            }) : (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>
+                  {activeTab === 'Favorites' 
+                    ? 'No favorites yet. Add instruments to your watchlist.'
+                    : 'No instruments found'}
+                </Text>
               </View>
-              <Text style={styles.gainerPrice}>{(item.lastPrice || item.price || 0).toLocaleString()}</Text>
-              <MiniChart isPositive={(item.changePercent || 0) >= 0} />
-            </TouchableOpacity>
-          )) : (
-            <Text style={{ color: colors.textSecondary, padding: 20 }}>No data available</Text>
-          )}
-        </ScrollView>
+            )}
+          </ScrollView>
+        )}
 
         {/* Categories */}
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          style={styles.categoriesContainer}
-        >
-          {categories.map((category) => (
-            <TouchableOpacity
-              key={category}
-              style={[
-                styles.categoryButton,
-                selectedCategory === category && styles.categoryButtonActive,
-              ]}
-              onPress={() => setSelectedCategory(category)}
-            >
-              <Text
+        <View style={styles.categoriesWrapper}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoriesContainer}
+          >
+            {categories.map((category) => (
+              <TouchableOpacity
+                key={category}
                 style={[
-                  styles.categoryText,
-                  selectedCategory === category && styles.categoryTextActive,
+                  styles.categoryButton,
+                  selectedCategory === category && styles.categoryButtonActive,
                 ]}
+                onPress={() => setSelectedCategory(category)}
               >
-                {category}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+                <Text
+                  style={[
+                    styles.categoryText,
+                    selectedCategory === category && styles.categoryTextActive,
+                  ]}
+                >
+                  {category}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Instruments List */}
+        <View style={styles.instrumentsList}>
+          {instrumentsLoading ? (
+            <View style={styles.instrumentsLoadingContainer}>
+              <ActivityIndicator size="small" color={colors.green} />
+            </View>
+          ) : instruments.length > 0 ? (
+            instruments.map((item, index) => {
+              const isPositive = item.changePercent >= 0;
+              return (
+                <TouchableOpacity
+                  key={item.id || `${item.symbol}-${index}`}
+                  style={styles.instrumentRow}
+                  onPress={() => navigateToChart(item)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.instrumentLeft}>
+                    <Text style={styles.instrumentSymbol}>{item.symbol}</Text>
+                    <Text style={styles.instrumentVolume}>{formatVolume(item.volume)} USDT</Text>
+                  </View>
+                  <View style={styles.instrumentRight}>
+                    <Text style={styles.instrumentPrice}>{formatPrice(item.price)}</Text>
+                    <View style={[
+                      styles.changeTag,
+                      { backgroundColor: isPositive ? colors.green : colors.red }
+                    ]}>
+                      <Text style={styles.changeTagText}>
+                        {item.changePercent.toFixed(2)}%
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          ) : (
+            <View style={styles.emptyInstrumentsContainer}>
+              <Text style={styles.emptyText}>No instruments available for {selectedCategory}</Text>
+            </View>
+          )}
+        </View>
 
         {/* Positions Section */}
         <View style={styles.positionsSection}>
@@ -498,72 +865,91 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 12,
   },
-  gainerCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    width: 140,
-    minHeight: 160,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  gainerHeader: {
-    flexDirection: 'row',
+  // Loading and empty states
+  loadingContainer: {
+    padding: 40,
     alignItems: 'center',
-    marginBottom: 12,
   },
-  gainerHeaderRight: {
-    marginLeft: 8,
-    flex: 1,
+  loadingText: {
+    color: colors.textSecondary,
+    marginTop: 12,
+    fontSize: 14,
   },
-  iconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#3D4262',
+  emptyContainer: {
+    padding: 20,
+    width: width - 32,
+  },
+  emptyText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  // Top Mover Cards styles (matching TradeOriginalScreen)
+  topMoverCard: {
+    backgroundColor: colors.cardBackground,
+    borderRadius: 16,
+    padding: 14,
+    width: CARD_WIDTH,
+    minHeight: 130,
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cardHeader: {
+    marginBottom: 8,
+  },
+  cardIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  iconText: {
-    color: '#FFFFFF',
+  cardIconText: {
     fontSize: 18,
     fontWeight: '700',
   },
-  gainerName: {
-    color: '#2C2F3E',
+  cardNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  cardSymbol: {
+    color: colors.textPrimary,
     fontSize: 12,
-    fontWeight: '400',
-    marginBottom: 2,
-  },
-  gainerChange: {
-    color: colors.green,
-    fontSize: 11,
     fontWeight: '500',
+    flex: 1,
   },
-  gainerPrice: {
-    color: '#2C2F3E',
+  cardChange: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  cardPrice: {
+    color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '700',
-    marginBottom: 4,
+  },
+  // Categories wrapper styles
+  categoriesWrapper: {
+    marginTop: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   categoriesContainer: {
     paddingHorizontal: 16,
-    marginBottom: 20,
-    maxHeight: 50,
+    paddingVertical: 12,
   },
   categoryButton: {
     paddingHorizontal: 16,
-    paddingVertical: 6,
-    marginRight: 8,
-    borderRadius: 16,
+    paddingVertical: 8,
+    marginRight: 10,
+    borderRadius: 20,
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: colors.border,
-    minHeight: 32,
-    justifyContent: 'center',
   },
   categoryButtonActive: {
     backgroundColor: colors.textPrimary,
@@ -574,12 +960,64 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
   },
-  categoryTextActive: {
-    color: colors.background,
+  // Instruments list styles
+  instrumentsList: {
+    paddingHorizontal: 16,
+    marginTop: 8,
+  },
+  instrumentsLoadingContainer: {
+    padding: 30,
+    alignItems: 'center',
+  },
+  emptyInstrumentsContainer: {
+    padding: 30,
+    alignItems: 'center',
+  },
+  instrumentRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  instrumentLeft: {
+    flex: 1,
+  },
+  instrumentSymbol: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  instrumentVolume: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  instrumentRight: {
+    alignItems: 'flex-end',
+  },
+  instrumentPrice: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  changeTag: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginTop: 6,
+    minWidth: 70,
+    alignItems: 'center',
+  },
+  changeTagText: {
+    color: colors.textPrimary,
+    fontSize: 13,
     fontWeight: '600',
   },
   positionsSection: {
     paddingHorizontal: 16,
+    paddingTop: 16,
     paddingBottom: 100,
   },
   positionFilters: {

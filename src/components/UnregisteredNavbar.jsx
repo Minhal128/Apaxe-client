@@ -4,11 +4,22 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 
 export default function UnregisteredNavbar({ navigation, activeScreen = 'home' }) {
+  // Safe navigation to home - handles both auth and unauth stacks
+  const navigateToHome = () => {
+    try {
+      // Try InitialHome first (unauth stack)
+      navigation.navigate('InitialHome');
+    } catch (e) {
+      // Fallback to Home (auth stack)
+      navigation.navigate('Home');
+    }
+  };
+  
   return (
     <View style={styles.bottomNavbar}>
       <TouchableOpacity 
         style={styles.navItem}
-        onPress={() => navigation.navigate('InitialHome')}
+        onPress={navigateToHome}
       >
         <Ionicons 
           name="home" 
@@ -25,16 +36,22 @@ export default function UnregisteredNavbar({ navigation, activeScreen = 'home' }
       
       <TouchableOpacity 
         style={styles.navItem}
-        onPress={() => navigation.navigate('Chart', { symbol: 'BTC/USDT', isLoggedIn: false })}
+        onPress={() => {
+          // Use reset to clear stack and navigate to TradeOriginal
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'TradeOriginal', params: { isLoggedIn: false } }],
+          });
+        }}
       >
         <Ionicons 
           name="bar-chart" 
           size={24} 
-          color={activeScreen === 'Chart' ? colors.textPrimary : colors.textSecondary} 
+          color={activeScreen === 'Trade' || activeScreen === 'TradeOriginal' ? colors.textPrimary : colors.textSecondary} 
         />
         <Text style={[
           styles.navLabel, 
-          { color: activeScreen === 'Chart' ? colors.textPrimary : colors.textSecondary }
+          { color: activeScreen === 'Trade' || activeScreen === 'TradeOriginal' ? colors.textPrimary : colors.textSecondary }
         ]}>
           Trade
         </Text>

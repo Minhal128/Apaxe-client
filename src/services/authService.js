@@ -4,10 +4,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export const authService = {
   async login(email, password) {
     const res = await api.post('/auth/login', { email, password });
-    // Backend returns accessToken, not token
+    console.log('Full login response:', JSON.stringify(res));
+    
+    // Backend returns { success: true, data: { accessToken, refreshToken, user } }
     const token = res.data?.accessToken || res.data?.token;
     const refreshToken = res.data?.refreshToken;
     const user = res.data?.user;
+    
+    console.log('Extracted token:', token ? 'yes' : 'no');
+    console.log('Extracted user:', user);
     
     if (token) {
       await api.setToken(token);
@@ -16,6 +21,7 @@ export const authService = {
       }
       if (user) {
         await AsyncStorage.setItem('user', JSON.stringify(user));
+        console.log('User saved to AsyncStorage');
       }
     }
     return res;

@@ -5,10 +5,26 @@ class ApiService {
   constructor() {
     this.baseURL = API_CONFIG.BASE_URL;
     this.timeout = 10000; // 10 second timeout
+    this.tokenProvider = null;
+  }
+
+  setTokenProvider(provider) {
+    this.tokenProvider = provider;
   }
 
   async getToken() {
-    return await AsyncStorage.getItem('token');
+    // First try to get token from AsyncStorage (backend login)
+    const storedToken = await AsyncStorage.getItem('token');
+    if (storedToken) {
+      return storedToken;
+    }
+    
+    // Fall back to Clerk token provider (Google OAuth)
+    if (this.tokenProvider) {
+      return await this.tokenProvider();
+    }
+    
+    return null;
   }
 
   async setToken(token) {
@@ -50,7 +66,7 @@ class ApiService {
 
       const data = await response.json();
       console.log('API Response data:', JSON.stringify(data).substring(0, 200));
-      
+
       // Don't throw errors for authentication issues - let the services handle them
       if (!response.ok) {
         // For authentication errors, return the error data instead of throwing
@@ -61,7 +77,7 @@ class ApiService {
             status: response.status
           };
         }
-        
+
         // For validation errors, return the error data instead of throwing
         if (response.status === 400 || (data.error && data.error.code === 'VALIDATION_ERROR')) {
           return {
@@ -70,7 +86,7 @@ class ApiService {
             status: response.status
           };
         }
-        
+
         // For forbidden errors, return the error data instead of throwing
         if (response.status === 403 || (data.error && data.error.code === 'FORBIDDEN_ERROR')) {
           return {
@@ -79,11 +95,11 @@ class ApiService {
             status: response.status
           };
         }
-        
+
         // For other errors, still throw
         throw new Error(data.message || data.error?.message || 'Request failed');
       }
-      
+
       return data;
     } catch (error) {
       clearTimeout(timeoutId);
@@ -91,7 +107,7 @@ class ApiService {
         console.error('API Request timed out:', url);
         throw new Error('Request timed out');
       }
-      
+
       // Don't log authentication errors as errors - they're expected
       if (error.message && (error.message.includes('Authentication') || error.message.includes('No token'))) {
         console.log('Authentication required for:', url);

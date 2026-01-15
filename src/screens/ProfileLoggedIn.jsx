@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useUser } from '@clerk/clerk-expo';
+import { useAppAuth } from '../contexts/AuthContext';
 import { colors } from '../constants/colors';
 import RegisteredNavbar from '../components/RegisteredNavbar';
 import LogoutModal from '../components/LogoutModal';
@@ -19,14 +21,22 @@ import ConnectionTest from '../components/ConnectionTest';
 import { authService } from '../services';
 
 export default function ProfileLoggedIn({ navigation }) {
+  const { logout } = useAppAuth();
+  // Get Clerk user for Google OAuth
+  const clerkUserData = useUser();
+  const clerkUser = clerkUserData?.user;
+  const clerkLoaded = clerkUserData?.isLoaded ?? false;
+  
   const [logoutVisible, setLogoutVisible] = useState(false);
   const [testVisible, setTestVisible] = useState(false);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchUser();
-  }, []);
+    if (clerkLoaded) {
+      fetchUser();
+    }
+  }, [clerkLoaded]);
 
   // Refresh user data when screen comes into focus
   useFocusEffect(
@@ -41,24 +51,66 @@ export default function ProfileLoggedIn({ navigation }) {
       let userData = await authService.getUser();
       if (userData) {
         setUser(userData);
+        setLoading(false);
+        return;
       }
       
       // Then fetch fresh data from API
-      const freshData = await authService.getProfile();
-      if (freshData) {
-        setUser(freshData);
+      try {
+        const freshData = await authService.getProfile();
+        if (freshData) {
+          setUser(freshData);
+          setLoading(false);
+          return;
+        }
+      } catch (e) {
+        console.log('Backend profile not available:', e.message);
+      }
+      
+      // Fallback to Clerk user data (for Google OAuth users)
+      if (clerkUser) {
+        console.log('Using Clerk user data for profile:', clerkUser.firstName, clerkUser.lastName);
+        setUser({
+          id: clerkUser.id,
+          firstName: clerkUser.firstName || clerkUser.username || 'User',
+          lastName: clerkUser.lastName || '',
+          email: clerkUser.primaryEmailAddress?.emailAddress,
+          phone: clerkUser.primaryPhoneNumber?.phoneNumber,
+          imageUrl: clerkUser.imageUrl,
+        });
       }
     } catch (error) {
       console.error('Error fetching user:', error);
+      // On error, try Clerk user
+      if (clerkUser) {
+        setUser({
+          id: clerkUser.id,
+          firstName: clerkUser.firstName || clerkUser.username || 'User',
+          lastName: clerkUser.lastName || '',
+          email: clerkUser.primaryEmailAddress?.emailAddress,
+          imageUrl: clerkUser.imageUrl,
+        });
+      }
     } finally {
       setLoading(false);
     }
   };
+  
+  // Update when Clerk user changes
+  useEffect(() => {
+    if (clerkUser && !user) {
+      fetchUser();
+    }
+  }, [clerkUser]);
 
   const handleLogout = async () => {
-    await authService.logout();
     setLogoutVisible(false);
-    navigation.navigate('InitialHome');
+    try {
+      // Use AuthContext's logout which handles both backend and Clerk logout
+      await logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   if (loading) {
@@ -89,15 +141,26 @@ export default function ProfileLoggedIn({ navigation }) {
         {/* User Profile Card */}
         <View style={styles.profileCard}>
           <View style={styles.avatar}>
-            <View style={styles.avatarCircle}>
-              <Text style={{ color: colors.textPrimary, fontSize: 24, fontWeight: 'bold' }}>
-                {user?.firstName?.[0] || 'U'}
-              </Text>
-            </View>
+            {user?.imageUrl ? (
+              <Image 
+                source={{ uri: user.imageUrl }} 
+                style={styles.avatarImage}
+              />
+            ) : (
+              <View style={styles.avatarCircle}>
+                <Text style={{ color: colors.textPrimary, fontSize: 24, fontWeight: 'bold' }}>
+                  {user?.firstName?.[0] || 'U'}
+                </Text>
+              </View>
+            )}
           </View>
           <View style={styles.profileInfo}>
-            <Text style={styles.userName}>{user?.firstName} {user?.lastName}</Text>
-            <Text style={styles.userId}>user #{user?.id?.slice(-6) || '000000'}</Text>
+            <Text style={styles.userName}>
+              {user?.firstName || user?.email?.split('@')[0] || 'User'} {user?.lastName || ''}
+            </Text>
+            <Text style={styles.userId}>
+              {user?.email || `user #${user?.id?.slice(-6) || '000000'}`}
+            </Text>
           </View>
         </View>
 
@@ -267,6 +330,13 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: '#5C8FDB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
   },
   profileInfo: {
     flex: 1,

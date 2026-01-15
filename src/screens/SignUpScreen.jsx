@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,42 +12,294 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
+import { useOAuth, useAuth } from '@clerk/clerk-expo';
+import { useAppAuth } from '../contexts/AuthContext';
 import { colors } from '../constants/colors';
-import { authService } from '../services';
+
+// Warm up the browser for faster OAuth
+const useWarmUpBrowser = () => {
+  useEffect(() => {
+    void WebBrowser.warmUpAsync();
+    return () => {
+      void WebBrowser.coolDownAsync();
+    };
+  }, []);
+};
+
+// Required for OAuth redirect handling
+WebBrowser.maybeCompleteAuthSession();
 
 export default function SignUpScreen({ navigation }) {
+  // Warm up browser on mount
+  useWarmUpBrowser();
+  
+  const clerkAuth = useAuth();
+  const isSignedIn = clerkAuth?.isSignedIn || false;
+  const { register } = useAppAuth();
+  const { startOAuthFlow } = useOAuth({ strategy: 'oauth_google' });
   const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Navigate away if already signed in (Google OAuth)
+  useEffect(() => {
+    if (isSignedIn) {
+      console.log('User is signed in via Google OAuth!');
+      setLoading(false);
+    }
+  }, [isSignedIn]);
+
+  const onGoogleLogin = useCallback(async () => {
+    try {
+      setLoading(true);
+      console.log('Starting Google OAuth flow for sign up...');
+      
+      // Dismiss any existing browser sessions first
+      try {
+        await WebBrowser.dismissBrowser();
+      } catch (e) {
+        // Ignore dismiss errors
+      }
+
+      // Get the redirect URL using the app scheme
+      const redirectUrl = Linking.createURL('oauth-callback');
+      console.log('Redirect URL:', redirectUrl);
+
+      // Start OAuth flow with explicit redirect URL
+      const result = await startOAuthFlow({
+        redirectUrl,
+      });
+      
+      console.log('OAuth flow result:', {
+        createdSessionId: result.createdSessionId,
+        hasSignIn: !!result.signIn,
+        hasSignUp: !!result.signUp,
+        signInStatus: result.signIn?.status,
+        signUpStatus: result.signUp?.status,
+        missingFields: result.signUp?.missingFields,
+      });
+
+      const { createdSessionId, signIn, signUp: oauthSignUp, setActive: oauthSetActive } = result;
+
+      // If we have a created session, activate it
+      if (createdSessionId) {
+        console.log('Setting active session:', createdSessionId);
+        await oauthSetActive({ session: createdSessionId });
+        console.log('✅ GOOGLE SIGN UP SUCCESSFUL! Session ID:', createdSessionId);
+        Alert.alert('Success', 'Successfully signed up with Google!');
+        return;
+      }
+      
+      if (oauthSignUp?.createdSessionId) {
+        console.log('Setting session from signup:', oauthSignUp.createdSessionId);
+        await oauthSetActive({ session: oauthSignUp.createdSessionId });
+        console.log('✅ GOOGLE SIGNUP SUCCESSFUL! Session ID:', oauthSignUp.createdSessionId);
+        Alert.alert('Success', 'Successfully signed up with Google!');
+        return;
+      }
+      
+      if (signIn?.createdSessionId) {
+        console.log('Setting session from signin:', signIn.createdSessionId);
+        await oauthSetActive({ session: signIn.createdSessionId });
+        console.log('✅ GOOGLE SIGNIN SUCCESSFUL! Session ID:', signIn.createdSessionId);
+        Alert.alert('Success', 'Successfully signed in with Google!');
+        return;
+      }
+      
+      // Handle missing requirements - auto-fill and complete signup
+      if (oauthSignUp?.status === 'missing_requirements') {
+        console.log('Sign up missing requirements:', oauthSignUp.missingFields);
+        console.log('Email from Google:', oauthSignUp.emailAddress);
+        
+        const missingFields = oauthSignUp.missingFields || [];
+        const updateData = {};
+        
+        // Auto-generate username if required
+        if (missingFields.includes('username')) {
+          const emailPrefix = oauthSignUp.emailAddress?.split('@')[0] || 'user';
+          updateData.username = emailPrefix.replace(/[^a-zA-Z0-9_]/g, '') + Math.floor(Math.random() * 1000);
+        }
+        
+        // Add any other missing fields with defaults
+        if (missingFields.includes('first_name')) {
+          updateData.firstName = oauthSignUp.firstName || oauthSignUp.emailAddress?.split('@')[0] || 'User';
+        }
+        if (missingFields.includes('last_name')) {
+          updateData.lastName = oauthSignUp.lastName || '';
+        }
+        
+        console.log('Updating signup with:', updateData);
+        
+        try {
+          // Update the SignUp object with missing fields
+          if (Object.keys(updateData).length > 0) {
+            const updatedSignUp = await oauthSignUp.update(updateData);
+            console.log('Updated signUp status:', updatedSignUp.status, 'sessionId:', updatedSignUp.createdSessionId);
+            
+            // Check if signup is now complete
+            if (updatedSignUp.status === 'complete' && updatedSignUp.createdSessionId) {
+              await oauthSetActive({ session: updatedSignUp.createdSessionId });
+              console.log('Signup completed after auto-fill!');
+              return;
+            }
+          }
+          
+          // If still not complete, reload and check
+          const reloaded = await oauthSignUp.reload();
+          console.log('Reloaded status:', reloaded.status, 'sessionId:', reloaded.createdSessionId);
+          
+          if (reloaded.status === 'complete' && reloaded.createdSessionId) {
+            await oauthSetActive({ session: reloaded.createdSessionId });
+            console.log('Google signup successful after reload!');
+            return;
+          }
+          
+          // Still missing something
+          console.log('Still missing requirements:', reloaded.missingFields);
+          Alert.alert(
+            'Additional Info Needed',
+            `Please provide: ${reloaded.missingFields?.join(', ') || 'additional information'}`
+          );
+        } catch (updateErr) {
+          console.error('Update error:', updateErr);
+          if (oauthSignUp.createdSessionId) {
+            await oauthSetActive({ session: oauthSignUp.createdSessionId });
+            return;
+          }
+          throw updateErr;
+        }
+      } else {
+        console.log('OAuth flow completed but no session created');
+        console.log('signIn status:', signIn?.status);
+        console.log('signUp status:', oauthSignUp?.status);
+      }
+    } catch (err) {
+      console.error('Google sign up error:', err);
+      console.error('Error code:', err?.errors?.[0]?.code);
+      console.error('Error message:', err?.message);
+      
+      // Don't show alert for user cancellation or timeout during dismissal
+      if (err?.message?.includes('cancel') || 
+          err?.message?.includes('dismiss') ||
+          err?.message?.includes('timeout') && loading === false) {
+        console.log('User cancelled or browser was dismissed');
+        return;
+      }
+      
+      // Check if it's a timeout but user might have succeeded
+      if (err?.message?.includes('timeout')) {
+        // Wait a moment and check if signed in
+        setTimeout(() => {
+          if (!isSignedIn) {
+            Alert.alert(
+              'Sign Up Timeout',
+              'The sign up took too long. Please try again.'
+            );
+          }
+        }, 1000);
+        return;
+      }
+      
+      Alert.alert(
+        'Sign Up Error',
+        err.errors?.[0]?.longMessage || err.message || 'Failed to sign up with Google'
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [startOAuthFlow, isSignedIn]);
+
+  const onAppleLogin = () => {
+    Alert.alert('Coming Soon', 'Apple sign up will be available soon');
+  };
+
+  const onFacebookLogin = () => {
+    Alert.alert('Coming Soon', 'Facebook sign up will be available soon');
+  };
+
+  // Use backend API for email/password registration
   const handleSignUp = async () => {
     if (!email || !password || !firstName || !lastName) {
       Alert.alert('Error', 'Please fill all fields');
       return;
     }
-    
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
+    // Password validation
+    if (password.length < 8) {
+      Alert.alert('Error', 'Password must be at least 8 characters long');
+      return;
+    }
+
     try {
       setLoading(true);
-      await authService.register({ email, password, firstName, lastName });
-      Alert.alert('Success', 'Account created! Please login.', [
-        { text: 'OK', onPress: () => navigation.navigate('Login') }
-      ]);
+      const trimmedEmail = email.trim().toLowerCase();
+      console.log('Starting backend signup with:', { email: trimmedEmail, firstName: firstName.trim(), lastName: lastName.trim() });
+      
+      // Use AuthContext's register method
+      const response = await register({
+        email: trimmedEmail,
+        password,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+      });
+
+      console.log('Backend signup response:', response);
+
+      if (response.success) {
+        Alert.alert(
+          'Registration Successful',
+          'Your account has been created. Please login to continue.',
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.navigate('Login'),
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Sign Up Failed', response.message || 'Registration failed. Please try again.');
+      }
     } catch (error) {
-      Alert.alert('Sign Up Failed', error.message || 'Registration failed');
+      console.error('Sign Up Error:', error);
+      
+      const errorMessage = error.response?.data?.message || error.message || 'Registration failed';
+      
+      if (errorMessage.includes('exists') || errorMessage.includes('already')) {
+        Alert.alert(
+          'Account Exists', 
+          'An account with this email already exists. Please login instead.'
+        );
+      } else if (errorMessage.includes('password')) {
+        Alert.alert(
+          'Password Error', 
+          errorMessage
+        );
+      } else {
+        Alert.alert('Sign Up Failed', errorMessage);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -112,7 +364,7 @@ export default function SignUpScreen({ navigation }) {
         </View>
 
         {/* Continue Button */}
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.continueButton, loading && { opacity: 0.7 }]}
           onPress={handleSignUp}
           disabled={loading}
@@ -129,14 +381,14 @@ export default function SignUpScreen({ navigation }) {
 
         {/* Social Login */}
         <View style={styles.socialButtons}>
-          <TouchableOpacity style={styles.socialButton}>
-            <Text style={styles.socialIcon}>G</Text>
+          <TouchableOpacity style={styles.socialButton} onPress={onGoogleLogin} disabled={loading}>
+            <Ionicons name="logo-google" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.socialButton}>
+          <TouchableOpacity style={styles.socialButton} onPress={onAppleLogin} disabled={loading}>
             <Ionicons name="logo-apple" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.socialButton}>
-            <Text style={styles.socialIcon}>f</Text>
+          <TouchableOpacity style={styles.socialButton} onPress={onFacebookLogin} disabled={loading}>
+            <Ionicons name="logo-facebook" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
 
@@ -144,13 +396,13 @@ export default function SignUpScreen({ navigation }) {
         <View style={styles.signInContainer}>
           <Text style={styles.signInText}>Already have an account? </Text>
           <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-            <Text style={styles.signInLink}>Sign up</Text>
+            <Text style={styles.signInLink}>Log in</Text>
           </TouchableOpacity>
         </View>
 
         {/* Terms */}
         <View style={styles.termsContainer}>
-          <Text style={styles.termsText}>By signing in or continuing, you agree to our </Text>
+          <Text style={styles.termsText}>By signing up or continuing, you agree to our </Text>
           <TouchableOpacity>
             <Text style={styles.termsLink}>Terms of Service</Text>
           </TouchableOpacity>

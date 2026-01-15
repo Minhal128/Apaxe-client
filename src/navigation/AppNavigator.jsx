@@ -3,12 +3,13 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { useAppAuth } from '../contexts/AuthContext';
 import { colors } from '../constants/colors';
 
 // Import screens
 import HomeScreen from '../screens/HomeScreen';
 import HomeScreenLoggedIn from '../screens/HomeScreenLoggedIn';
-import ChartScreen from '../screens/ChartScreen';
+// import ChartScreen from '../screens/ChartScreen';
 import TradeScreen from '../screens/TradeScreen';
 import WalletScreen from '../screens/WalletScreen';
 import PositionScreen from '../screens/PositionScreen';
@@ -41,6 +42,8 @@ import ThemeModeScreen from '../screens/ThemeModeScreen';
 import SessionTimeoutScreen from '../screens/SessionTimeoutScreen';
 import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
 import RateUsScreen from '../screens/RateUsScreen';
+import TradeOriginalScreen from '../screens/TradeOriginalScreen';
+import CoinChartScreen from '../screens/CoinChartScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -78,7 +81,8 @@ function MainTabs() {
       />
       <Tab.Screen
         name="Market"
-        component={TradeScreen}
+        component={TradeOriginalScreen}
+        initialParams={{ isLoggedIn: true }}
         options={{
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="bar-chart" size={size} color={color} />
@@ -109,73 +113,114 @@ function MainTabs() {
 }
 
 export default function AppNavigator() {
+  const { isAuthenticated, isLoaded } = useAppAuth();
+
+  if (!isLoaded) {
+    return null; // Or a loading screen
+  }
+
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName="InitialHome"
         screenOptions={{
           headerShown: false,
           cardStyle: { backgroundColor: colors.background },
         }}
       >
-        <Stack.Screen 
-          name="InitialHome" 
-          component={HomeScreen}
-        />
-        <Stack.Screen name="MainTabs" component={MainTabs} />
-        <Stack.Screen name="Chart" component={ChartScreen} />
-        <Stack.Screen name="Wallet" component={WalletScreen} />
-        <Stack.Screen name="Position" component={PositionScreen} />
-        <Stack.Screen name="Profile" component={ProfileScreen} />
-        <Stack.Screen name="WalletLoggedIn" component={WalletLoggedIn} />
-        <Stack.Screen name="PositionLoggedIn" component={PositionLoggedIn} />
-        <Stack.Screen name="ProfileLoggedIn" component={ProfileLoggedIn} />
-        <Stack.Screen name="ModifyPosition" component={ModifyPositionScreen} />
-        <Stack.Screen name="History" component={HistoryScreen} />
-        <Stack.Screen name="ProfileInfo" component={ProfileInfoScreen} />
-        <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-        <Stack.Screen name="Preferences" component={PreferencesScreen} />
-        <Stack.Screen name="MarketSegment" component={MarketSegmentScreen} />
-        <Stack.Screen name="DefaultOrder" component={DefaultOrderScreen} />
-        <Stack.Screen name="Language" component={LanguageScreen} />
-        <Stack.Screen name="Security" component={SecurityScreen} />
-        <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
-        <Stack.Screen name="TwoFactorAuth" component={TwoFactorAuthScreen} />
-        <Stack.Screen name="AppInfo" component={AppInfoScreen} />
-        <Stack.Screen name="TermsAndConditions" component={TermsAndConditionsScreen} />
-        <Stack.Screen name="CustomerSupport" component={CustomerSupportScreen} />
-        <Stack.Screen name="ThemeMode" component={ThemeModeScreen} />
-        <Stack.Screen name="SessionTimeout" component={SessionTimeoutScreen} />
-        <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
-        <Stack.Screen name="RateUs" component={RateUsScreen} />
-        <Stack.Screen name="Notification" component={NotificationScreen} />
-        <Stack.Screen name="Alert" component={AlertScreen} />
-        <Stack.Screen 
-          name="Login" 
-          component={LoginScreen}
-          options={{
-            presentation: 'modal',
-          }}
-        />
-        <Stack.Screen 
-          name="SignUp" 
-          component={SignUpScreen}
-          options={{
-            presentation: 'modal',
-          }}
-        />
-        <Stack.Screen 
-          name="ResetPassword" 
-          component={ResetPasswordScreen}
-        />
-        <Stack.Screen 
-          name="OtpVerification" 
-          component={OtpVerificationScreen}
-        />
-        <Stack.Screen 
-          name="SetNewPassword" 
-          component={SetNewPasswordScreen}
-        />
+        {!isAuthenticated ? (
+          // Auth Stack
+          <>
+            <Stack.Screen
+              name="InitialHome"
+              component={HomeScreen}
+            />
+            <Stack.Screen
+              name="Login"
+              component={LoginScreen}
+              options={{
+                presentation: 'modal',
+              }}
+            />
+            <Stack.Screen
+              name="SignUp"
+              component={SignUpScreen}
+              options={{
+                presentation: 'modal',
+              }}
+            />
+            <Stack.Screen
+              name="ResetPassword"
+              component={ResetPasswordScreen}
+            />
+            <Stack.Screen
+              name="OtpVerification"
+              component={OtpVerificationScreen}
+            />
+            <Stack.Screen
+              name="SetNewPassword"
+              component={SetNewPasswordScreen}
+            />
+            <Stack.Screen 
+              name="CoinChart" 
+              component={CoinChartScreen} 
+            />
+            <Stack.Screen 
+              name="Chart" 
+              component={CoinChartScreen} 
+            />
+            <Stack.Screen 
+              name="TradeOriginal" 
+              component={TradeOriginalScreen} 
+            />
+            <Stack.Screen 
+              name="Wallet" 
+              component={WalletScreen} 
+            />
+            <Stack.Screen 
+              name="Position" 
+              component={PositionScreen} 
+            />
+            <Stack.Screen 
+              name="Profile" 
+              component={ProfileScreen} 
+            />
+          </>
+        ) : (
+          // App Stack
+          <>
+            <Stack.Screen name="MainTabs" component={MainTabs} />
+            <Stack.Screen name="TradeOriginal" component={TradeOriginalScreen} initialParams={{ isLoggedIn: true }} />
+            <Stack.Screen name="Trade" component={TradeOriginalScreen} initialParams={{ isLoggedIn: true }} />
+            <Stack.Screen name="CoinChart" component={CoinChartScreen} initialParams={{ isLoggedIn: true }} />
+            <Stack.Screen name="Chart" component={CoinChartScreen} initialParams={{ isLoggedIn: true }} />
+            <Stack.Screen name="Wallet" component={WalletScreen} />
+            <Stack.Screen name="Position" component={PositionScreen} />
+            <Stack.Screen name="Profile" component={ProfileScreen} />
+            <Stack.Screen name="WalletLoggedIn" component={WalletLoggedIn} />
+            <Stack.Screen name="PositionLoggedIn" component={PositionLoggedIn} />
+            <Stack.Screen name="ProfileLoggedIn" component={ProfileLoggedIn} />
+            <Stack.Screen name="ModifyPosition" component={ModifyPositionScreen} />
+            <Stack.Screen name="History" component={HistoryScreen} />
+            <Stack.Screen name="ProfileInfo" component={ProfileInfoScreen} />
+            <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+            <Stack.Screen name="Preferences" component={PreferencesScreen} />
+            <Stack.Screen name="MarketSegment" component={MarketSegmentScreen} />
+            <Stack.Screen name="DefaultOrder" component={DefaultOrderScreen} />
+            <Stack.Screen name="Language" component={LanguageScreen} />
+            <Stack.Screen name="Security" component={SecurityScreen} />
+            <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+            <Stack.Screen name="TwoFactorAuth" component={TwoFactorAuthScreen} />
+            <Stack.Screen name="AppInfo" component={AppInfoScreen} />
+            <Stack.Screen name="TermsAndConditions" component={TermsAndConditionsScreen} />
+            <Stack.Screen name="CustomerSupport" component={CustomerSupportScreen} />
+            <Stack.Screen name="ThemeMode" component={ThemeModeScreen} />
+            <Stack.Screen name="SessionTimeout" component={SessionTimeoutScreen} />
+            <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+            <Stack.Screen name="RateUs" component={RateUsScreen} />
+            <Stack.Screen name="Notification" component={NotificationScreen} />
+            <Stack.Screen name="Alert" component={AlertScreen} />
+          </>
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,39 +12,260 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
+import { useOAuth, useAuth } from '@clerk/clerk-expo';
+import { useAppAuth } from '../contexts/AuthContext';
 import { colors } from '../constants/colors';
-import { authService } from '../services';
+
+// Warm up the browser for faster OAuth
+export const useWarmUpBrowser = () => {
+  useEffect(() => {
+    void WebBrowser.warmUpAsync();
+    return () => {
+      void WebBrowser.coolDownAsync();
+    };
+  }, []);
+};
+
+// Required for OAuth redirect handling
+WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen({ navigation }) {
+  // Warm up browser on mount
+  useWarmUpBrowser();
+  
+  const clerkAuth = useAuth();
+  const isSignedIn = clerkAuth?.isSignedIn || false;
+  const { login } = useAppAuth();
+  const { startOAuthFlow } = useOAuth({ strategy: 'oauth_google' });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Navigate away if already signed in (Google OAuth)
+  useEffect(() => {
+    if (isSignedIn) {
+      console.log('User is signed in via Google OAuth!');
+      setLoading(false);
+    }
+  }, [isSignedIn]);
+
+  const onGoogleLogin = useCallback(async () => {
+    try {
+      setLoading(true);
+      console.log('Starting Google OAuth flow...');
+      
+      // Dismiss any existing browser sessions first
+      try {
+        await WebBrowser.dismissBrowser();
+      } catch (e) {
+        // Ignore dismiss errors
+      }
+
+      // Get the redirect URL using the app scheme
+      const redirectUrl = Linking.createURL('oauth-callback');
+      console.log('Redirect URL:', redirectUrl);
+
+      // Start OAuth flow with explicit redirect URL
+      const result = await startOAuthFlow({
+        redirectUrl,
+      });
+      
+      console.log('OAuth flow result:', {
+        createdSessionId: result.createdSessionId,
+        hasSignIn: !!result.signIn,
+        hasSignUp: !!result.signUp,
+        signInStatus: result.signIn?.status,
+        signUpStatus: result.signUp?.status,
+        missingFields: result.signUp?.missingFields,
+      });
+
+      const { createdSessionId, signIn: oauthSignIn, signUp, setActive: oauthSetActive } = result;
+
+      // If we have a created session, activate it
+      if (createdSessionId) {
+        console.log('Setting active session:', createdSessionId);
+        await oauthSetActive({ session: createdSessionId });
+        console.log('✅ GOOGLE LOGIN SUCCESSFUL! Session ID:', createdSessionId);
+        Alert.alert('Success', 'Successfully signed in with Google!');
+        return;
+      }
+      
+      if (signUp?.createdSessionId) {
+        console.log('Setting session from signup:', signUp.createdSessionId);
+        await oauthSetActive({ session: signUp.createdSessionId });
+        console.log('✅ GOOGLE SIGNUP SUCCESSFUL! Session ID:', signUp.createdSessionId);
+        Alert.alert('Success', 'Successfully signed up with Google!');
+        return;
+      }
+      
+      if (oauthSignIn?.createdSessionId) {
+        console.log('Setting session from signin:', oauthSignIn.createdSessionId);
+        await oauthSetActive({ session: oauthSignIn.createdSessionId });
+        console.log('✅ GOOGLE SIGNIN SUCCESSFUL! Session ID:', oauthSignIn.createdSessionId);
+        Alert.alert('Success', 'Successfully signed in with Google!');
+        return;
+      }
+      
+      // Handle missing requirements - auto-fill and complete signup
+      if (signUp?.status === 'missing_requirements') {
+        console.log('Sign up missing requirements:', signUp.missingFields);
+        console.log('Email from Google:', signUp.emailAddress);
+        
+        const missingFields = signUp.missingFields || [];
+        const updateData = {};
+        
+        // Auto-generate username if required
+        if (missingFields.includes('username')) {
+          const emailPrefix = signUp.emailAddress?.split('@')[0] || 'user';
+          updateData.username = emailPrefix.replace(/[^a-zA-Z0-9_]/g, '') + Math.floor(Math.random() * 1000);
+        }
+        
+        // Add any other missing fields with defaults
+        if (missingFields.includes('first_name')) {
+          updateData.firstName = signUp.firstName || signUp.emailAddress?.split('@')[0] || 'User';
+        }
+        if (missingFields.includes('last_name')) {
+          updateData.lastName = signUp.lastName || '';
+        }
+        
+        console.log('Updating signup with:', updateData);
+        
+        try {
+          // Update the SignUp object with missing fields
+          if (Object.keys(updateData).length > 0) {
+            const updatedSignUp = await signUp.update(updateData);
+            console.log('Updated signUp status:', updatedSignUp.status, 'sessionId:', updatedSignUp.createdSessionId);
+            
+            // Check if signup is now complete
+            if (updatedSignUp.status === 'complete' && updatedSignUp.createdSessionId) {
+              await oauthSetActive({ session: updatedSignUp.createdSessionId });
+              console.log('Signup completed after auto-fill!');
+              return;
+            }
+          }
+          
+          // If still not complete, reload and check
+          const reloaded = await signUp.reload();
+          console.log('Reloaded status:', reloaded.status, 'sessionId:', reloaded.createdSessionId);
+          
+          if (reloaded.status === 'complete' && reloaded.createdSessionId) {
+            await oauthSetActive({ session: reloaded.createdSessionId });
+            console.log('Google signup successful after reload!');
+            return;
+          }
+          
+          // Still missing something
+          console.log('Still missing requirements:', reloaded.missingFields);
+          Alert.alert(
+            'Additional Info Needed',
+            `Please provide: ${reloaded.missingFields?.join(', ') || 'additional information'}`
+          );
+        } catch (updateErr) {
+          console.error('Update error:', updateErr);
+          // Try to see if we can still complete
+          if (signUp.createdSessionId) {
+            await oauthSetActive({ session: signUp.createdSessionId });
+            return;
+          }
+          throw updateErr;
+        }
+      } else {
+        console.log('OAuth flow completed but no session created');
+        console.log('signIn status:', oauthSignIn?.status);
+        console.log('signUp status:', signUp?.status);
+      }
+    } catch (err) {
+      console.error('Google login error:', err);
+      console.error('Error code:', err?.errors?.[0]?.code);
+      console.error('Error message:', err?.message);
+      
+      // Don't show alert for user cancellation
+      if (err?.message?.includes('cancel') || 
+          err?.message?.includes('dismiss')) {
+        console.log('User cancelled or browser was dismissed');
+        return;
+      }
+      
+      Alert.alert(
+        'Login Error',
+        err.errors?.[0]?.longMessage || err.message || 'Failed to login with Google'
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [startOAuthFlow]);
+
+  const onFacebookLogin = () => {
+    Alert.alert('Coming Soon', 'Facebook login will be available soon');
+  };
+
+  const onAppleLogin = () => {
+    Alert.alert('Coming Soon', 'Apple login will be available soon');
+  };
+
+  // Use backend API for email/password login
   const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert('Error', 'Please enter email and password');
       return;
     }
-    
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
     try {
       setLoading(true);
-      await authService.login(email, password);
-      navigation.navigate('MainTabs');
+      const trimmedEmail = email.trim().toLowerCase();
+      console.log('Attempting backend login with email:', trimmedEmail);
+      
+      // Use AuthContext's login method which handles token storage and state update
+      const response = await login(trimmedEmail, password);
+      
+      console.log('Backend login response:', response);
+
+      if (response.success) {
+        console.log('Login successful!');
+        // The AuthContext will update isAuthenticated, which triggers navigation automatically
+      } else {
+        Alert.alert('Login Failed', response.message || 'Invalid credentials');
+      }
     } catch (error) {
-      Alert.alert('Login Failed', error.message || 'Invalid credentials');
+      console.error('Login error:', error);
+      
+      const errorMessage = error.response?.data?.message || error.message || 'Login failed';
+      
+      if (errorMessage.includes('not found') || errorMessage.includes('No user')) {
+        Alert.alert(
+          'Account Not Found', 
+          'No account exists with this email. Please sign up first.'
+        );
+      } else if (errorMessage.includes('password') || errorMessage.includes('Invalid credentials')) {
+        Alert.alert(
+          'Incorrect Password', 
+          'The password you entered is incorrect. Please try again.'
+        );
+      } else {
+        Alert.alert('Login Failed', errorMessage);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -54,7 +275,7 @@ export default function LoginScreen({ navigation }) {
 
       <View style={styles.content}>
         <Text style={styles.title}>Hello there,</Text>
-        <Text style={styles.title}>Welcome to Apex trading</Text>
+        <Text style={styles.title}>Welcome back</Text>
         <Text style={styles.subtitle}>Sign in to start trading</Text>
 
         {/* Email Input */}
@@ -85,10 +306,10 @@ export default function LoginScreen({ navigation }) {
               autoCapitalize="none"
             />
             <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-              <Ionicons 
-                name={showPassword ? "eye-off" : "eye"} 
-                size={20} 
-                color={colors.textSecondary} 
+              <Ionicons
+                name={showPassword ? "eye-off" : "eye"}
+                size={20}
+                color={colors.textSecondary}
               />
             </TouchableOpacity>
           </View>
@@ -100,7 +321,7 @@ export default function LoginScreen({ navigation }) {
         </TouchableOpacity>
 
         {/* Continue Button */}
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.continueButton, loading && { opacity: 0.7 }]}
           onPress={handleLogin}
           disabled={loading}
@@ -117,14 +338,14 @@ export default function LoginScreen({ navigation }) {
 
         {/* Social Login */}
         <View style={styles.socialButtons}>
-          <TouchableOpacity style={styles.socialButton}>
-            <Text style={styles.socialIcon}>G</Text>
+          <TouchableOpacity style={styles.socialButton} onPress={onGoogleLogin} disabled={loading}>
+            <Ionicons name="logo-google" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.socialButton}>
+          <TouchableOpacity style={styles.socialButton} onPress={onAppleLogin} disabled={loading}>
             <Ionicons name="logo-apple" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.socialButton}>
-            <Text style={styles.socialIcon}>f</Text>
+          <TouchableOpacity style={styles.socialButton} onPress={onFacebookLogin} disabled={loading}>
+            <Ionicons name="logo-facebook" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
 

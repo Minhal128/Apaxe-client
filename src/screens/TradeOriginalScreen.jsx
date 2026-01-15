@@ -10,46 +10,93 @@ import {
   RefreshControl,
   Dimensions,
 } from 'react-native';
-import { Svg, Polyline } from 'react-native-svg';
+import { Svg, Polyline, Defs, LinearGradient, Stop, Path } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../constants/colors';
 import RegisteredNavbar from '../components/RegisteredNavbar';
 import UnregisteredNavbar from '../components/UnregisteredNavbar';
 import { instrumentService, watchlistService } from '../services';
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - 48) / 2.5;
+const CARD_WIDTH = (width - 56) / 2.5;
 
 const tabs = ['Top gainers', 'Top losers', 'Most active', 'Favorites'];
 const categories = ['Crypto', 'MCX', 'Forex', 'NSE', 'Equity', 'Commodity'];
 
-// Mini chart component for top movers cards
+// Icon mapping for different symbols
+const ICON_CONFIG = {
+  'BTC': { icon: '₿', color: '#F7931A', bg: '#FFFFFF' },
+  'ETH': { icon: '◊', color: '#627EEA', bg: '#FFFFFF' },
+  'SOL': { icon: '◎', color: '#00FFA3', bg: '#FFFFFF' },
+  'XRP': { icon: '✕', color: '#23292F', bg: '#FFFFFF' },
+  'BNB': { icon: '⬡', color: '#F3BA2F', bg: '#FFFFFF' },
+  'TRX': { icon: '◈', color: '#FF0013', bg: '#FFFFFF' },
+  'TRON': { icon: '◈', color: '#FF0013', bg: '#FFFFFF' },
+  'AXIS': { icon: 'A', color: '#97144D', bg: '#FFFFFF' },
+  'AXISBANK': { icon: 'A', color: '#97144D', bg: '#FFFFFF' },
+  'SBIN': { icon: 'Ⓢ', color: '#0066B2', bg: '#FFFFFF' },
+  'NIFTY': { icon: '₹', color: '#1A1A2E', bg: '#FFFFFF' },
+  'NIFTY50': { icon: '₹', color: '#1A1A2E', bg: '#FFFFFF' },
+  'GOLD': { icon: '◉', color: '#FFD700', bg: '#FFFFFF' },
+  'SILVER': { icon: '◉', color: '#C0C0C0', bg: '#FFFFFF' },
+  'CRUDE': { icon: '◉', color: '#000000', bg: '#FFFFFF' },
+  'DEFAULT': { icon: '●', color: '#5B8DEE', bg: '#FFFFFF' },
+};
+
+// Get icon config for symbol
+const getIconConfig = (symbol) => {
+  const baseSymbol = symbol?.split('/')[0]?.toUpperCase() || '';
+  return ICON_CONFIG[baseSymbol] || ICON_CONFIG.DEFAULT;
+};
+
+// Mini chart component with gradient fill
 const MiniChart = ({ isPositive, data = [] }) => {
-  // Generate smooth chart points based on data or random pattern
-  const generatePoints = () => {
-    if (data.length >= 2) {
-      const maxVal = Math.max(...data);
-      const minVal = Math.min(...data);
-      const range = maxVal - minVal || 1;
-      return data.map((val, i) => {
-        const x = (i / (data.length - 1)) * 60;
-        const y = 25 - ((val - minVal) / range) * 20;
-        return `${x},${y}`;
-      }).join(' ');
-    }
+  const chartWidth = 100;
+  const chartHeight = 40;
+  
+  const generatePath = () => {
+    const points = data.length >= 2 ? data : (isPositive 
+      ? [22, 20, 18, 19, 16, 14, 15, 12, 10, 8] 
+      : [8, 10, 12, 11, 14, 16, 15, 18, 20, 22]);
     
-    // Default pattern based on trend
-    if (isPositive) {
-      return "0,22 10,20 20,18 30,16 40,12 50,10 60,8";
-    } else {
-      return "0,8 10,10 20,12 30,14 40,18 50,20 60,22";
-    }
+    const maxVal = Math.max(...points);
+    const minVal = Math.min(...points);
+    const range = maxVal - minVal || 1;
+    
+    const pathPoints = points.map((val, i) => {
+      const x = (i / (points.length - 1)) * chartWidth;
+      const y = chartHeight - 5 - ((val - minVal) / range) * (chartHeight - 10);
+      return `${x},${y}`;
+    });
+    
+    const linePath = `M${pathPoints.join(' L')}`;
+    const areaPath = `${linePath} L${chartWidth},${chartHeight} L0,${chartHeight} Z`;
+    
+    return { linePath, areaPath };
   };
 
+  const { linePath, areaPath } = generatePath();
+  const gradientId = isPositive ? 'greenGrad' : 'redGrad';
+
   return (
-    <Svg height="30" width="60" style={{ marginTop: 8 }}>
+    <Svg height={chartHeight} width={chartWidth} style={{ marginTop: 12 }}>
+      <Defs>
+        <LinearGradient id="greenGrad" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={colors.green} stopOpacity="0.4" />
+          <Stop offset="1" stopColor={colors.green} stopOpacity="0.05" />
+        </LinearGradient>
+        <LinearGradient id="redGrad" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={colors.red} stopOpacity="0.4" />
+          <Stop offset="1" stopColor={colors.red} stopOpacity="0.05" />
+        </LinearGradient>
+      </Defs>
+      <Path
+        d={areaPath}
+        fill={`url(#${gradientId})`}
+      />
       <Polyline
-        points={generatePoints()}
+        points={linePath.replace('M', '')}
         fill="none"
         stroke={isPositive ? colors.green : colors.red}
         strokeWidth="2"
@@ -69,7 +116,7 @@ const formatVolume = (volume) => {
   return volume.toString();
 };
 
-// Format price
+// Format price with proper decimals
 const formatPrice = (price) => {
   if (!price) return '0.00';
   if (price >= 10000) {
@@ -81,31 +128,12 @@ const formatPrice = (price) => {
   return price.toFixed(4);
 };
 
-// Get icon background color based on symbol
-const getIconColor = (symbol) => {
-  const colorMap = {
-    'BTC': '#F7931A',
-    'ETH': '#627EEA',
-    'SOL': '#00FFA3',
-    'XRP': '#23292F',
-    'BNB': '#F3BA2F',
-    'TRON': '#FF0013',
-    'TRX': '#FF0013',
-    'AXIS': '#97144D',
-    'SBIN': '#0066B2',
-    'NIFTY': '#1A1A2E',
-  };
-  const firstPart = symbol?.split('/')[0] || symbol;
-  return colorMap[firstPart] || '#3D4262';
-};
-
-export default function TradeScreen({ route, navigation }) {
+export default function TradeOriginalScreen({ route, navigation }) {
   const { isLoggedIn = false } = route?.params || {};
   const [activeTab, setActiveTab] = useState('Top gainers');
   const [selectedCategory, setSelectedCategory] = useState('Crypto');
   const [topMovers, setTopMovers] = useState([]);
   const [instruments, setInstruments] = useState([]);
-  const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [instrumentsLoading, setInstrumentsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -129,7 +157,8 @@ export default function TradeScreen({ route, navigation }) {
         price: item.currentPrice?.ltp || item.ltp || 0,
         changePercent: item.currentPrice?.changePercent || item.changePercent || 0,
         volume: item.currentPrice?.volume || item.volume || 0,
-        segment: item.segment
+        segment: item.segment,
+        priceHistory: item.priceHistory || []
       }));
 
       let sortedMovers = [];
@@ -153,7 +182,6 @@ export default function TradeScreen({ route, navigation }) {
             .slice(0, 10);
           break;
         case 'Favorites':
-          // Fetch from watchlist if logged in
           if (isLoggedIn) {
             try {
               const watchlistRes = await watchlistService.getDefaultWatchlist();
@@ -242,74 +270,107 @@ export default function TradeScreen({ route, navigation }) {
     setRefreshing(false);
   };
 
-  const navigateToChart = (item) => {
-    navigation.navigate('Chart', { 
+  // Navigate to CoinChartScreen when clicking on a coin
+  const navigateToChart = async (item) => {
+    // Get userId from cached user data
+    let userId = null;
+    try {
+      const cachedUser = await AsyncStorage.getItem('cachedUser');
+      if (cachedUser) {
+        const user = JSON.parse(cachedUser);
+        userId = user?.id || user?.email || null;
+      }
+    } catch (e) {
+      console.log('Error getting user ID:', e);
+    }
+    
+    navigation.navigate('CoinChart', { 
       symbol: item.symbol, 
       instrumentId: item.id,
-      isLoggedIn 
+      isLoggedIn,
+      userId
     });
   };
 
-  const renderTopMoverCard = (item) => (
-    <TouchableOpacity
-      key={item.id || item.symbol}
-      style={styles.topMoverCard}
-      onPress={() => navigateToChart(item)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.cardHeader}>
-        <View style={[styles.iconContainer, { backgroundColor: getIconColor(item.symbol) }]}>
-          <Text style={styles.iconText}>
-            {item.symbol?.split('/')[0]?.[0] || item.symbol?.[0] || '?'}
-          </Text>
+  // Render top mover card (matches screenshot style)
+  const renderTopMoverCard = (item, index) => {
+    const iconConfig = getIconConfig(item.symbol);
+    const isPositive = item.changePercent >= 0;
+    const displaySymbol = item.symbol?.split('/')[0] || item.symbol;
+    
+    return (
+      <TouchableOpacity
+        key={item.id || `${item.symbol}-${index}`}
+        style={styles.topMoverCard}
+        onPress={() => navigateToChart(item)}
+        activeOpacity={0.7}
+      >
+        {/* Icon and Name Row */}
+        <View style={styles.cardTopRow}>
+          <View style={[styles.iconContainer, { backgroundColor: iconConfig.bg }]}>
+            <Text style={[styles.iconText, { color: iconConfig.color }]}>
+              {iconConfig.icon}
+            </Text>
+          </View>
         </View>
-        <View style={styles.cardHeaderInfo}>
+        
+        {/* Symbol and Change Row */}
+        <View style={styles.cardNameRow}>
           <Text style={styles.cardSymbol} numberOfLines={1}>
-            {item.symbol?.split('/')[0] || item.symbol}
+            {displaySymbol}
           </Text>
           <Text style={[
             styles.cardChange,
-            { color: item.changePercent >= 0 ? colors.green : colors.red }
+            { color: isPositive ? colors.green : colors.red }
           ]}>
-            {item.changePercent >= 0 ? '+' : ''}{item.changePercent.toFixed(2)}%
+            {isPositive ? '+' : ''}{item.changePercent.toFixed(2)}%
           </Text>
         </View>
-      </View>
-      <Text style={styles.cardPrice}>{formatPrice(item.price)}</Text>
-      <MiniChart isPositive={item.changePercent >= 0} />
-    </TouchableOpacity>
-  );
+        
+        {/* Price */}
+        <Text style={styles.cardPrice}>{formatPrice(item.price)}</Text>
+        
+        {/* Mini Chart */}
+        <MiniChart isPositive={isPositive} data={item.priceHistory} />
+      </TouchableOpacity>
+    );
+  };
 
-  const renderInstrumentRow = (item) => (
-    <TouchableOpacity
-      key={item.id || item.symbol}
-      style={styles.instrumentRow}
-      onPress={() => navigateToChart(item)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.instrumentLeft}>
-        <Text style={styles.instrumentSymbol}>{item.symbol}</Text>
-        <Text style={styles.instrumentVolume}>{formatVolume(item.volume)} USDT</Text>
-      </View>
-      <View style={styles.instrumentRight}>
-        <Text style={styles.instrumentPrice}>{formatPrice(item.price)}</Text>
-        <View style={[
-          styles.changeTag,
-          { backgroundColor: item.changePercent >= 0 ? colors.green : colors.red }
-        ]}>
-          <Text style={styles.changeTagText}>
-            {item.changePercent >= 0 ? '' : ''}{item.changePercent.toFixed(2)}%
-          </Text>
+  // Render instrument row (matches screenshot style)
+  const renderInstrumentRow = (item, index) => {
+    const isPositive = item.changePercent >= 0;
+    
+    return (
+      <TouchableOpacity
+        key={item.id || `${item.symbol}-${index}`}
+        style={styles.instrumentRow}
+        onPress={() => navigateToChart(item)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.instrumentLeft}>
+          <Text style={styles.instrumentSymbol}>{item.symbol}</Text>
+          <Text style={styles.instrumentVolume}>{formatVolume(item.volume)} USDT</Text>
         </View>
-      </View>
-    </TouchableOpacity>
-  );
+        <View style={styles.instrumentRight}>
+          <Text style={styles.instrumentPrice}>{formatPrice(item.price)}</Text>
+          <View style={[
+            styles.changeTag,
+            { backgroundColor: isPositive ? colors.green : colors.red }
+          ]}>
+            <Text style={styles.changeTagText}>
+              {isPositive ? '' : ''}{item.changePercent.toFixed(2)}%
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
       
-      {/* Top Tabs */}
+      {/* Top Tabs - Top gainers, Top losers, Most active, Favorites */}
       <View style={styles.tabsContainer}>
         <ScrollView 
           horizontal 
@@ -345,7 +406,7 @@ export default function TradeScreen({ route, navigation }) {
           />
         }
       >
-        {/* Top Movers Cards */}
+        {/* Top Movers Cards - Horizontal scrollable */}
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.green} />
@@ -366,7 +427,7 @@ export default function TradeScreen({ route, navigation }) {
             contentContainerStyle={styles.topMoversContainer}
           >
             {topMovers.length > 0 ? (
-              topMovers.map(renderTopMoverCard)
+              topMovers.map((item, index) => renderTopMoverCard(item, index))
             ) : (
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyText}>
@@ -379,7 +440,7 @@ export default function TradeScreen({ route, navigation }) {
           </ScrollView>
         )}
 
-        {/* Category Tabs */}
+        {/* Category Tabs - Crypto, MCX, Forex, NSE, Equity, Commodity */}
         <View style={styles.categoriesWrapper}>
           <ScrollView
             horizontal
@@ -413,7 +474,7 @@ export default function TradeScreen({ route, navigation }) {
               <ActivityIndicator size="small" color={colors.green} />
             </View>
           ) : instruments.length > 0 ? (
-            instruments.map(renderInstrumentRow)
+            instruments.map((item, index) => renderInstrumentRow(item, index))
           ) : (
             <View style={styles.emptyInstrumentsContainer}>
               <Text style={styles.emptyText}>No instruments available for {selectedCategory}</Text>
@@ -425,19 +486,11 @@ export default function TradeScreen({ route, navigation }) {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Floating Action Button */}
-      <TouchableOpacity 
-        style={styles.fab}
-        onPress={() => navigation.navigate('Chart', { isLoggedIn })}
-      >
-        <Ionicons name="chatbubble-ellipses" size={24} color={colors.textPrimary} />
-      </TouchableOpacity>
-
       {/* Bottom Navbar */}
       {isLoggedIn ? (
-        <RegisteredNavbar navigation={navigation} activeScreen="Trade" />
+        <RegisteredNavbar navigation={navigation} activeScreen="TradeOriginal" />
       ) : (
-        <UnregisteredNavbar navigation={navigation} activeScreen="Trade" />
+        <UnregisteredNavbar navigation={navigation} activeScreen="TradeOriginal" />
       )}
     </View>
   );
@@ -448,6 +501,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  // Top Tabs styles
   tabsContainer: {
     paddingTop: 50,
     borderBottomWidth: 1,
@@ -474,9 +528,11 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontWeight: '600',
   },
+  // Content area
   content: {
     flex: 1,
   },
+  // Loading & Error states
   loadingContainer: {
     padding: 40,
     alignItems: 'center',
@@ -517,62 +573,66 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
   },
+  // Top Movers Cards styles
   topMoversContainer: {
     paddingHorizontal: 16,
-    paddingVertical: 20,
+    paddingVertical: 16,
     gap: 12,
   },
   topMoverCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 14,
+    backgroundColor: colors.cardBackground,
+    borderRadius: 20,
+    padding: 16,
     width: CARD_WIDTH,
-    minHeight: 140,
+    minHeight: 160,
     marginRight: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
+  cardTopRow: {
+    marginBottom: 12,
   },
   iconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   iconText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: '700',
   },
-  cardHeaderInfo: {
-    marginLeft: 10,
-    flex: 1,
+  cardNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginBottom: 6,
+    gap: 8,
   },
   cardSymbol: {
-    color: '#2C2F3E',
-    fontSize: 13,
+    color: colors.textPrimary,
+    fontSize: 14,
     fontWeight: '500',
   },
   cardChange: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
-    marginTop: 2,
   },
   cardPrice: {
-    color: '#2C2F3E',
-    fontSize: 18,
+    color: colors.textPrimary,
+    fontSize: 22,
     fontWeight: '700',
+    letterSpacing: -0.5,
   },
+  // Category tabs styles
   categoriesWrapper: {
     marginTop: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   categoriesContainer: {
     paddingHorizontal: 16,
@@ -600,6 +660,7 @@ const styles = StyleSheet.create({
     color: colors.background,
     fontWeight: '600',
   },
+  // Instruments list styles
   instrumentsList: {
     paddingHorizontal: 16,
     marginTop: 8,
@@ -642,8 +703,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   changeTag: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 6,
     marginTop: 6,
     minWidth: 70,
@@ -654,20 +715,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  fab: {
-    position: 'absolute',
-    bottom: 100,
-    alignSelf: 'center',
-    backgroundColor: colors.blue,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
-  },
+  // Floating Action Button
+  // fab removed
 });
