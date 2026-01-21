@@ -122,7 +122,7 @@ export default function CoinChartScreen({ route, navigation }) {
   const [searchSegment, setSearchSegment] = useState('NSE');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('NSE');
-  const [categories, setCategories] = useState(['NSE', 'MCX', 'Forex', 'Crypto', 'Equity', 'Commodity']);
+  const [categories, setCategories] = useState(['NSE', 'MCX', 'Forex', 'Crypto', 'Equity', 'Community']);
   
   const [userBalance, setUserBalance] = useState(null); // Balance from API
   const [positions, setPositions] = useState([]);
@@ -744,7 +744,12 @@ export default function CoinChartScreen({ route, navigation }) {
 
       {renderCandlestickChart()}
 
-      <View style={styles.timeframeContainer}>
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        style={styles.timeframeScrollView}
+        contentContainerStyle={styles.timeframeContainer}
+      >
         {timeframes.map((tf, index) => (
           <TouchableOpacity
             key={`${tf}-${index}`}
@@ -762,7 +767,7 @@ export default function CoinChartScreen({ route, navigation }) {
             </Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
       <View style={styles.actionButtons}>
         <TouchableOpacity 
@@ -1436,24 +1441,28 @@ const styles = StyleSheet.create({
   },
   segmentTabsContainer: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
+    backgroundColor: '#0f1419',
   },
   segmentTabsContent: {
     paddingRight: 16,
+    gap: 8,
   },
   segmentTab: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginRight: 8,
-    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 25,
     backgroundColor: '#1E2530',
+    borderWidth: 1,
+    borderColor: '#2A3040',
   },
   segmentTabActive: {
     backgroundColor: '#FFFFFF',
+    borderColor: '#FFFFFF',
   },
   segmentTabText: {
     color: '#8F92A1',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '500',
   },
   segmentTabTextActive: {
@@ -1545,19 +1554,26 @@ const styles = StyleSheet.create({
     bottom: 10,
     padding: 8,
   },
+  timeframeScrollView: {
+    flexGrow: 0,
+  },
   timeframeContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    justifyContent: 'space-between',
+    paddingVertical: 12,
+    gap: 8,
   },
   timeframeButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#2A3040',
   },
   timeframeButtonActive: {
-    backgroundColor: '#3A3D4E',
+    backgroundColor: '#2A3040',
+    borderColor: '#3A4050',
   },
   timeframeText: {
     color: '#8F92A1',
