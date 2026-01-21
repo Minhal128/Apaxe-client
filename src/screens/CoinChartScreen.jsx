@@ -124,7 +124,11 @@ export default function CoinChartScreen({ route, navigation }) {
   const [selectedCategory, setSelectedCategory] = useState('NSE');
   const [categories, setCategories] = useState(['NSE', 'MCX', 'Forex', 'Crypto', 'Equity', 'Community']);
   
-  const [userBalance, setUserBalance] = useState(null); // Balance from API
+  const [userBalance, setUserBalance] = useState({
+    balance: 0,
+    availableMargin: 0,
+    lockedMargin: 0,
+  }); // Balance from API
   const [positions, setPositions] = useState([]);
   const [orders, setOrders] = useState([]); // All orders for pending/closed
   const [closedPositions, setClosedPositions] = useState([]); // Closed positions history
@@ -153,7 +157,11 @@ export default function CoinChartScreen({ route, navigation }) {
       ]);
       
       if (balanceRes.success) {
-        setUserBalance(balanceRes.balance);
+        setUserBalance({
+          balance: balanceRes.balance || 0,
+          availableMargin: balanceRes.availableMargin || 0,
+          lockedMargin: balanceRes.lockedMargin || 0,
+        });
       }
       
       // Set open positions
@@ -235,8 +243,12 @@ export default function CoinChartScreen({ route, navigation }) {
     }
   }, [searchModalVisible, searchSegment, searchQuery]);
   
-  // Display balance from API
-  const displayBalance = userBalance ?? 0;
+  // Display balance from API - use availableMargin for trading decisions
+  const displayBalance = userBalance?.balance || 0;
+  const displayAvailableMargin = userBalance?.availableMargin || 0;
+  const displayLockedMargin = userBalance?.lockedMargin || 0;
+  const displayEquity = userBalance?.balance || 0;
+  const displayFreeMargin = userBalance?.availableMargin || 0;
 
   const adjustQuantity = (delta) => {
     const current = parseFloat(quantity) || 0;
@@ -262,11 +274,12 @@ export default function CoinChartScreen({ route, navigation }) {
     
     setOrderLoading(true);
     
+    // Use availableMargin for balance check, not total balance
     if (tradeType === 'BUY') {
-      if (totalCost > displayBalance) {
+      if (totalCost > displayAvailableMargin) {
         Alert.alert(
-          'Insufficient Balance',
-          `You need ${formatPrice(totalCost)} but only have ${formatPrice(displayBalance)}`,
+          'Insufficient Margin',
+          `You need ${formatPrice(totalCost)} but only have ${formatPrice(displayAvailableMargin)} available`,
           [{ text: 'OK' }]
         );
         setOrderLoading(false);
@@ -305,9 +318,13 @@ export default function CoinChartScreen({ route, navigation }) {
       if (orderResult.success) {
         // Fetch updated balance from API
         const newBalanceResult = await userService.getBalance();
-        const newBalance = newBalanceResult.success ? newBalanceResult.balance : displayBalance;
-        
-        setUserBalance(newBalance);
+        if (newBalanceResult.success) {
+          setUserBalance({
+            balance: newBalanceResult.balance || 0,
+            availableMargin: newBalanceResult.availableMargin || 0,
+            lockedMargin: newBalanceResult.lockedMargin || 0,
+          });
+        }
         
         setOrderResult({
           type: tradeType,
@@ -315,7 +332,7 @@ export default function CoinChartScreen({ route, navigation }) {
           quantity: qty,
           price: price,
           total: totalCost,
-          newBalance: newBalance,
+          newBalance: newBalanceResult.success ? newBalanceResult.availableMargin : displayAvailableMargin,
         });
         
         setOrderLoading(false);
@@ -860,11 +877,11 @@ export default function CoinChartScreen({ route, navigation }) {
             </View>
             <View style={styles.statRow}>
               <Text style={styles.statLabel}>Equity</Text>
-              <Text style={styles.statValue}>${formatPrice(displayBalance)}</Text>
+              <Text style={styles.statValue}>${formatPrice(displayEquity)}</Text>
             </View>
             <View style={styles.statRow}>
               <Text style={styles.statLabel}>Free Margin</Text>
-              <Text style={styles.statValue}>${formatPrice(displayBalance)}</Text>
+              <Text style={styles.statValue}>${formatPrice(displayFreeMargin)}</Text>
             </View>
           </View>
 
@@ -1089,8 +1106,8 @@ export default function CoinChartScreen({ route, navigation }) {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Create order</Text>
               <View style={styles.modalBalanceContainer}>
-                <Text style={styles.modalBalanceLabel}>Balance:</Text>
-                <Text style={styles.modalBalanceValue}>${formatPrice(displayBalance)}</Text>
+                <Text style={styles.modalBalanceLabel}>Available:</Text>
+                <Text style={styles.modalBalanceValue}>${formatPrice(displayAvailableMargin)}</Text>
               </View>
             </View>
             

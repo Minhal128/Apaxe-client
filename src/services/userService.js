@@ -250,21 +250,29 @@ const userService = {
   async getBalance() {
     try {
       const response = await api.get('/users/dashboard');
-      if (response.success && response.data?.balance !== undefined) {
+      if (response.success && response.data) {
         return {
           success: true,
-          balance: response.data.balance
+          balance: response.data.balance || 0,
+          availableMargin: response.data.availableMargin || 0,
+          lockedMargin: response.data.lockedMargin || 0,
+          equity: response.data.balance || 0, // For display purposes
+          freeMargin: response.data.availableMargin || 0, // For display purposes
         };
       }
       return {
         success: false,
-        balance: 0
+        balance: 0,
+        availableMargin: 0,
+        lockedMargin: 0,
       };
     } catch (error) {
       console.error('Error fetching balance:', error);
       return {
         success: false,
-        balance: 0
+        balance: 0,
+        availableMargin: 0,
+        lockedMargin: 0,
       };
     }
   },
