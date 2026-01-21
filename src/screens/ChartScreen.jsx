@@ -8,6 +8,7 @@ import {
   StatusBar,
   ScrollView,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
@@ -16,7 +17,7 @@ import TradeOrderModal from '../components/TradeOrderModal';
 import SearchCoinModal from '../components/SearchCoinModal';
 import RegisteredNavbar from '../components/RegisteredNavbar';
 import UnregisteredNavbar from '../components/UnregisteredNavbar';
-import { instrumentService, positionService, userService, segmentService, websocketService } from '../services';
+import { instrumentService, positionService, orderService, userService, segmentService, websocketService } from '../services';
 
 // Deterministic pseudo-random generator for dummy chart data
 function createSeededRNG(seedString) {
@@ -54,20 +55,33 @@ const { width } = Dimensions.get('window');
 
 const timeframes = ['1m', '5m', '15m', '1h', '1d', 'More'];
 
+// Format volume to readable string
+const formatVolume = (volume) => {
+  if (!volume) return '0';
+  if (volume >= 1e9) return `${(volume / 1e9).toFixed(1)}B`;
+  if (volume >= 1e6) return `${(volume / 1e6).toFixed(0)}M`;
+  if (volume >= 1e3) return `${(volume / 1e3).toFixed(0)}K`;
+  return volume.toString();
+};
+
 export default function ChartScreen({ route, navigation }) {
   const { symbol = 'Nifty 500', instrumentId = null, isLoggedIn = false } = route?.params || {};
   const [selectedTimeframe, setSelectedTimeframe] = useState('1d');
   const [activeTab, setActiveTab] = useState('Positions');
+  const [positionFilter, setPositionFilter] = useState('Open'); // Open, Pending, Closed
   const [modalVisible, setModalVisible] = useState(false);
   const [tradeModalVisible, setTradeModalVisible] = useState(false);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('NSE');
   const [selectedPosition, setSelectedPosition] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   
   // Real data states
   const [loading, setLoading] = useState(true);
   const [instrumentData, setInstrumentData] = useState(null);
   const [positions, setPositions] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [closedPositions, setClosedPositions] = useState([]);
   const [marketWatchData, setMarketWatchData] = useState([]);
   const [categories, setCategories] = useState([]);
   const [dashboardData, setDashboardData] = useState(null);
@@ -176,18 +190,29 @@ export default function ChartScreen({ route, navigation }) {
     }
   };
 
-  // Fetch positions and dashboard
+  // Fetch positions, orders and dashboard
   const fetchUserData = async () => {
     if (!isLoggedIn) return;
     
     try {
-      const [positionsRes, dashboardRes] = await Promise.all([
-        positionService.getPositions(),
-        userService.getDashboard()
+      const [positionsRes, ordersRes, orderHistoryRes, positionHistoryRes, dashboardRes] = await Promise.all([
+        positionService.getPositions().catch(() => ({ success: false, data: [] })),
+        orderService.getOrders().catch(() => ({ success: false, data: [] })),
+        orderService.getOrderHistory().catch(() => ({ success: false, data: [] })),
+        positionService.getPositionHistory().catch(() => ({ success: false, data: [] })),
+        userService.getDashboard().catch(() => ({ success: false, data: {} }))
       ]);
       
       if (positionsRes.success) {
         setPositions(positionsRes.data || []);
+      }
+      if (ordersRes.success || orderHistoryRes.success) {
+        // Combine orders and order history, filter for pending
+        const allOrders = [...(ordersRes.data || []), ...(orderHistoryRes.data || [])];
+        setOrders(allOrders);
+      }
+      if (positionHistoryRes.success) {
+        setClosedPositions(positionHistoryRes.data || []);
       }
       if (dashboardRes.success) {
         setDashboardData(dashboardRes.data);
@@ -197,21 +222,27 @@ export default function ChartScreen({ route, navigation }) {
     }
   };
 
+  // Handle refresh
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchUserData();
+    setRefreshing(false);
+  }, [isLoggedIn]);
+
   // Fetch market watch data
   const fetchMarketWatch = async () => {
     try {
-      // Map category names to API segment names
+      // Map category names to API segment names for backend
       const segmentMap = {
-        'Crypto': 'CRYPTO',
-        'MCX': 'MCX',
-        'MCX2': 'MCX',
-        'Forex': 'FOREX',
         'NSE': 'NSE',
-        'Equity': 'NSE',
-        'Commodity': 'MCX'
+        'MCX': 'MCX',
+        'Forex': 'FOREX',
+        'Crypto': 'CRYPTO',
+        'Equity': 'EQUITY',
+        'Commodity': 'COMMODITY'
       };
       
-      const apiSegment = segmentMap[selectedCategory] || 'ALL';
+      const apiSegment = segmentMap[selectedCategory] || selectedCategory.toUpperCase();
       const response = await instrumentService.getMarketWatch(apiSegment, { limit: 10 });
       if (response.success) {
         // Response structure: { data: { instruments: [...] } }
@@ -241,14 +272,19 @@ export default function ChartScreen({ route, navigation }) {
       // Handle nested response: { data: { segments: [...] } }
       const segments = response?.data?.segments || [];
       if (segments.length > 0) {
-        setCategories(segments.map(s => s.name || s.displayName));
-        setSelectedCategory(segments[0]?.name || 'NSE');
+        // Map backend segments to display names and ensure all market types are included
+        const backendCategories = segments.map(s => s.name || s.displayName);
+        // Add any missing standard categories
+        const standardCategories = ['NSE', 'MCX', 'Forex', 'Crypto', 'Equity', 'Commodity'];
+        const mergedCategories = [...new Set([...backendCategories, ...standardCategories])];
+        setCategories(mergedCategories);
+        setSelectedCategory(backendCategories[0] || 'NSE');
       } else {
-        setCategories(['NSE', 'MCX', 'MCX2', 'Forex', 'Crypto']);
+        setCategories(['NSE', 'MCX', 'Forex', 'Crypto', 'Equity', 'Commodity']);
       }
     } catch (error) {
       console.error('Error fetching categories:', error);
-      setCategories(['NSE', 'MCX', 'MCX2', 'Forex', 'Crypto']);
+      setCategories(['NSE', 'MCX', 'Forex', 'Crypto', 'Equity', 'Commodity']);
     }
   };
 
@@ -312,11 +348,45 @@ export default function ChartScreen({ route, navigation }) {
           <Text style={styles.headerTitle}>{symbol}</Text>
           <Ionicons name="flash" size={16} color={colors.textSecondary} />
         </View>
-        <View style={{ width: 24 }} />
+        <TouchableOpacity onPress={() => setSearchModalVisible(true)}>
+          <Ionicons name="search" size={24} color={colors.textPrimary} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Market Segment Tabs */}
+      <View style={styles.segmentTabsContainer}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.segmentTabsContent}
+        >
+          {categories.map((category) => (
+            <TouchableOpacity
+              key={category}
+              style={[
+                styles.segmentTab,
+                selectedCategory === category && styles.segmentTabActive,
+              ]}
+              onPress={() => setSelectedCategory(category)}
+            >
+              <Text
+                style={[
+                  styles.segmentTabText,
+                  selectedCategory === category && styles.segmentTabTextActive,
+                ]}
+              >
+                {category}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       {/* Price Info */}
       <View style={styles.priceContainer}>
+        <Text style={styles.currentPrice}>
+          {currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </Text>
         <Text style={[styles.changePercent, priceChange >= 0 ? styles.positiveChange : styles.negativeChange]}>
           {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
         </Text>
@@ -444,7 +514,13 @@ export default function ChartScreen({ route, navigation }) {
 
       {/* Tab Content */}
       {activeTab === 'Positions' && (
-        <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
+        <ScrollView 
+          style={styles.tabContent} 
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.green} />
+          }
+        >
           <View style={styles.balanceSection}>
             <View style={styles.balanceRow}>
               <Text style={styles.balanceLabel}>Balance</Text>
@@ -465,64 +541,174 @@ export default function ChartScreen({ route, navigation }) {
             showsHorizontalScrollIndicator={false}
             style={styles.positionFilters}
           >
-            <TouchableOpacity style={[styles.filterButton, styles.filterButtonActive]}>
-              <Text style={styles.filterTextActive}>Open</Text>
+            <TouchableOpacity 
+              style={[styles.filterButton, positionFilter === 'Open' && styles.filterButtonActive]}
+              onPress={() => setPositionFilter('Open')}
+            >
+              <Text style={positionFilter === 'Open' ? styles.filterTextActive : styles.filterText}>Open</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.filterButton}>
-              <Text style={styles.filterText}>Pending</Text>
+            <TouchableOpacity 
+              style={[styles.filterButton, positionFilter === 'Pending' && styles.filterButtonActive]}
+              onPress={() => setPositionFilter('Pending')}
+            >
+              <Text style={positionFilter === 'Pending' ? styles.filterTextActive : styles.filterText}>Pending</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.filterButton}>
-              <Text style={styles.filterText}>Closed</Text>
+            <TouchableOpacity 
+              style={[styles.filterButton, positionFilter === 'Closed' && styles.filterButtonActive]}
+              onPress={() => setPositionFilter('Closed')}
+            >
+              <Text style={positionFilter === 'Closed' ? styles.filterTextActive : styles.filterText}>Closed</Text>
             </TouchableOpacity>
           </ScrollView>
 
           <View style={styles.positionAmount}>
             <Text style={styles.positionAmountText}>
-              ${Array.isArray(positions) ? positions.reduce((sum, p) => sum + (p.unrealizedPnl || 0), 0).toFixed(2) : '0.00'}
+              ${(() => {
+                if (positionFilter === 'Open') {
+                  return Array.isArray(positions) ? positions.reduce((sum, p) => sum + (p.unrealizedPnl || 0), 0).toFixed(2) : '0.00';
+                } else if (positionFilter === 'Pending') {
+                  const pendingOrders = orders.filter(o => o.status === 'PENDING' || o.status === 'OPEN' || o.status === 'PARTIALLY_FILLED');
+                  return pendingOrders.reduce((sum, o) => sum + ((o.quantity || 0) * (o.price || 0)), 0).toFixed(2);
+                } else {
+                  return Array.isArray(closedPositions) ? closedPositions.reduce((sum, p) => sum + (p.realizedPnl || p.pnl || 0), 0).toFixed(2) : '0.00';
+                }
+              })()}
             </Text>
           </View>
 
-          {Array.isArray(positions) && positions.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="layers-outline" size={48} color={colors.textSecondary} />
-              <Text style={styles.emptyText}>No open positions</Text>
-            </View>
-          ) : Array.isArray(positions) ? (
-            positions.map((position) => (
-              <TouchableOpacity 
-                key={position.id}
-                style={styles.positionCard}
-                onPress={() => {
-                  setSelectedPosition(position);
-                  setTradeModalVisible(true);
-                }}
-              >
-                <View style={styles.positionHeader}>
-                  <View style={styles.positionLeft}>
-                    <View style={styles.iconContainer}>
-                      <Text style={styles.iconText}>{position.instrument?.symbol?.[0] || 'P'}</Text>
-                    </View>
-                    <View>
-                      <Text style={styles.positionSymbol}>{position.instrument?.symbol || 'Unknown'}</Text>
-                      <Text style={styles.positionAction}>
-                        <Text style={position.side === 'BUY' ? styles.buyText : styles.sellText}>
-                          {position.side} {position.quantity}
-                        </Text>
-                        <Text style={styles.atText}> at {position.avgPrice?.toFixed(2)}</Text>
+          {/* Open Positions */}
+          {positionFilter === 'Open' && (
+            <>
+              {Array.isArray(positions) && positions.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="layers-outline" size={48} color={colors.textSecondary} />
+                  <Text style={styles.emptyText}>No open positions</Text>
+                </View>
+              ) : Array.isArray(positions) ? (
+                positions.map((position) => (
+                  <TouchableOpacity 
+                    key={position.id}
+                    style={styles.positionCard}
+                    onPress={() => {
+                      setSelectedPosition(position);
+                      setTradeModalVisible(true);
+                    }}
+                  >
+                    <View style={styles.positionHeader}>
+                      <View style={styles.positionLeft}>
+                        <View style={styles.iconContainer}>
+                          <Text style={styles.iconText}>{position.instrument?.symbol?.[0] || 'P'}</Text>
+                        </View>
+                        <View>
+                          <Text style={styles.positionSymbol}>{position.instrument?.symbol || 'Unknown'}</Text>
+                          <Text style={styles.positionAction}>
+                            <Text style={position.side === 'BUY' ? styles.buyText : styles.sellText}>
+                              {position.side} {position.quantity}
+                            </Text>
+                            <Text style={styles.atText}> at {position.avgPrice?.toFixed(2)}</Text>
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.positionAmountValue, position.unrealizedPnl >= 0 ? styles.profitPositive : styles.profitNegative]}>
+                        ${position.unrealizedPnl?.toFixed(2) || '0.00'}
                       </Text>
                     </View>
-                  </View>
-                  <Text style={[styles.positionAmount, position.unrealizedPnl >= 0 ? styles.profitPositive : styles.profitNegative]}>
-                    ${position.unrealizedPnl?.toFixed(2) || '0.00'}
-                  </Text>
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="layers-outline" size={48} color={colors.textSecondary} />
+                  <Text style={styles.emptyText}>No open positions</Text>
                 </View>
-              </TouchableOpacity>
-            ))
-          ) : (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="layers-outline" size={48} color={colors.textSecondary} />
-              <Text style={styles.emptyText}>No open positions</Text>
-            </View>
+              )}
+            </>
+          )}
+
+          {/* Pending Orders */}
+          {positionFilter === 'Pending' && (
+            <>
+              {(() => {
+                const pendingOrders = orders.filter(o => o.status === 'PENDING' || o.status === 'OPEN' || o.status === 'PARTIALLY_FILLED');
+                if (pendingOrders.length === 0) {
+                  return (
+                    <View style={styles.emptyContainer}>
+                      <Ionicons name="time-outline" size={48} color={colors.textSecondary} />
+                      <Text style={styles.emptyText}>No pending orders</Text>
+                    </View>
+                  );
+                }
+                return pendingOrders.map((order) => (
+                  <View key={order.id} style={styles.positionCard}>
+                    <View style={styles.positionHeader}>
+                      <View style={styles.positionLeft}>
+                        <View style={styles.iconContainer}>
+                          <Ionicons name="time" size={20} color={colors.textPrimary} />
+                        </View>
+                        <View>
+                          <Text style={styles.positionSymbol}>{order.instrument?.symbol || order.symbol || 'Unknown'}</Text>
+                          <Text style={styles.positionAction}>
+                            <Text style={order.side === 'BUY' ? styles.buyText : styles.sellText}>
+                              {order.side} {order.quantity}
+                            </Text>
+                            <Text style={styles.atText}> at {(order.price || 0).toFixed(2)}</Text>
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.orderStatusContainer}>
+                        <Text style={styles.orderStatusText}>{order.status}</Text>
+                        <Text style={styles.orderDateText}>{new Date(order.createdAt).toLocaleDateString()}</Text>
+                      </View>
+                    </View>
+                  </View>
+                ));
+              })()}
+            </>
+          )}
+
+          {/* Closed Positions */}
+          {positionFilter === 'Closed' && (
+            <>
+              {(() => {
+                // Include closed positions and filled/cancelled orders
+                const closedOrders = orders.filter(o => o.status === 'FILLED' || o.status === 'CANCELLED' || o.status === 'REJECTED');
+                const allClosed = [...closedPositions, ...closedOrders];
+                
+                if (allClosed.length === 0) {
+                  return (
+                    <View style={styles.emptyContainer}>
+                      <Ionicons name="checkmark-circle-outline" size={48} color={colors.textSecondary} />
+                      <Text style={styles.emptyText}>No closed positions</Text>
+                    </View>
+                  );
+                }
+                return allClosed.map((item, index) => (
+                  <View key={item.id || `closed-${index}`} style={styles.positionCard}>
+                    <View style={styles.positionHeader}>
+                      <View style={styles.positionLeft}>
+                        <View style={styles.iconContainer}>
+                          <Ionicons name="checkmark-circle" size={20} color={colors.green} />
+                        </View>
+                        <View>
+                          <Text style={styles.positionSymbol}>{item.instrument?.symbol || item.symbol || 'Unknown'}</Text>
+                          <Text style={styles.positionAction}>
+                            <Text style={item.side === 'BUY' ? styles.buyText : styles.sellText}>
+                              {item.side} {item.quantity}
+                            </Text>
+                            <Text style={styles.atText}> at {(item.avgPrice || item.price || 0).toFixed(2)}</Text>
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.orderStatusContainer}>
+                        <Text style={[styles.positionAmountValue, (item.realizedPnl || item.pnl || 0) >= 0 ? styles.profitPositive : styles.profitNegative]}>
+                          ${(item.realizedPnl || item.pnl || 0).toFixed(2)}
+                        </Text>
+                        <Text style={styles.orderDateText}>{item.status || 'CLOSED'}</Text>
+                      </View>
+                    </View>
+                  </View>
+                ));
+              })()}
+            </>
           )}
         </ScrollView>
       )}
@@ -557,32 +743,6 @@ export default function ChartScreen({ route, navigation }) {
 
       {activeTab === 'Market watch' && (
         <ScrollView style={styles.marketWatch} showsVerticalScrollIndicator={false}>
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            style={styles.categoriesContainer}
-          >
-            {categories.map((category) => (
-              <TouchableOpacity
-                key={category}
-                style={[
-                  styles.categoryButton,
-                  selectedCategory === category && styles.categoryButtonActive,
-                ]}
-                onPress={() => setSelectedCategory(category)}
-              >
-                <Text
-                  style={[
-                    styles.categoryText,
-                    selectedCategory === category && styles.categoryTextActive,
-                  ]}
-                >
-                  {category}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
           {marketWatchData.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Ionicons name="eye-outline" size={48} color={colors.textSecondary} />
@@ -593,21 +753,20 @@ export default function ChartScreen({ route, navigation }) {
               <TouchableOpacity 
                 key={item.id} 
                 style={styles.marketWatchCard}
-                onPress={() => navigation.navigate('Chart', { symbol: item.symbol, instrumentId: item.id, isLoggedIn })}
+                onPress={() => setSearchModalVisible(true)}
               >
                 <View style={styles.marketWatchLeft}>
                   <Text style={styles.marketWatchSymbol}>{item.symbol}</Text>
-                  <Text style={styles.marketWatchOption}>{item.segment?.name || item.segment || 'N/A'} . {item.currentPrice?.toFixed(2) || '0.00'}</Text>
+                  <Text style={styles.marketWatchVolume}>Vol {formatVolume(item.volume)}</Text>
                 </View>
                 <View style={styles.marketWatchRight}>
-                  <Text style={styles.marketWatchPrice}>{item.currentPrice?.toFixed(2) || '0.00'}</Text>
+                  <Text style={styles.marketWatchPrice}>
+                    {(item.price || item.lastPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                  </Text>
                   <Text style={[styles.marketWatchChange, (item.changePercent || 0) >= 0 ? styles.positiveChange : styles.negativeChange]}>
-                    ${Math.abs(item.change || 0).toFixed(2)}
+                    ${Math.abs(item.change || (item.price * (item.changePercent || 0) / 100) || 0).toFixed(2)}
                   </Text>
                 </View>
-                <Text style={[styles.marketWatchPercentage, (item.changePercent || 0) >= 0 ? styles.positiveChange : styles.negativeChange]}>
-                  {(item.changePercent || 0) >= 0 ? '+' : ''}{(item.changePercent || 0).toFixed(2)}%
-                </Text>
               </TouchableOpacity>
             ))
           )}
@@ -631,6 +790,14 @@ export default function ChartScreen({ route, navigation }) {
       <SearchCoinModal 
         visible={searchModalVisible} 
         onClose={() => setSearchModalVisible(false)}
+        onSelect={(item) => {
+          // Navigate to the selected coin's chart
+          navigation.navigate('Chart', { 
+            symbol: item.symbol, 
+            instrumentId: item.instrumentId || item.id,
+            isLoggedIn 
+          });
+        }}
       />
 
       {/* Create Order Modal */}
@@ -675,9 +842,41 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginRight: 4,
   },
+  segmentTabsContainer: {
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  segmentTabsContent: {
+    paddingRight: 16,
+  },
+  segmentTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 8,
+    borderRadius: 20,
+    backgroundColor: colors.cardBackground,
+  },
+  segmentTabActive: {
+    backgroundColor: colors.textPrimary,
+  },
+  segmentTabText: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  segmentTabTextActive: {
+    color: colors.background,
+    fontWeight: '600',
+  },
   priceContainer: {
     paddingHorizontal: 16,
     marginBottom: 8,
+  },
+  currentPrice: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 4,
   },
   changePercent: {
     color: colors.green,
@@ -934,29 +1133,7 @@ const styles = StyleSheet.create({
   marketWatch: {
     flex: 1,
     paddingHorizontal: 16,
-  },
-  categoriesContainer: {
-    marginTop: 16,
-    marginBottom: 16,
-  },
-  categoryButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginRight: 8,
-    borderRadius: 16,
-    backgroundColor: colors.cardBackground,
-  },
-  categoryButtonActive: {
-    backgroundColor: colors.textPrimary,
-  },
-  categoryText: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  categoryTextActive: {
-    color: colors.background,
-    fontWeight: '600',
+    paddingTop: 8,
   },
   marketWatchCard: {
     flexDirection: 'row',
@@ -975,13 +1152,12 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginBottom: 4,
   },
-  marketWatchOption: {
+  marketWatchVolume: {
     fontSize: 12,
     color: colors.textSecondary,
   },
   marketWatchRight: {
     alignItems: 'flex-end',
-    marginRight: 12,
   },
   marketWatchPrice: {
     fontSize: 16,
@@ -992,10 +1168,6 @@ const styles = StyleSheet.create({
   marketWatchChange: {
     fontSize: 13,
     fontWeight: '500',
-  },
-  marketWatchPercentage: {
-    fontSize: 14,
-    fontWeight: '600',
   },
   positiveChange: {
     color: colors.green,
@@ -1019,5 +1191,22 @@ const styles = StyleSheet.create({
   },
   profitNegative: {
     color: colors.red,
+  },
+  orderStatusContainer: {
+    alignItems: 'flex-end',
+  },
+  orderStatusText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  orderDateText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  positionAmountValue: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

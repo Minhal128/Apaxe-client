@@ -8,9 +8,13 @@ import {
   StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export default function PreferencesScreen({ navigation }) {
+  const { themeMode, colors } = useTheme();
+  const { language } = useLanguage();
+
   const menuItems = [
     {
       id: 1,
@@ -30,24 +34,24 @@ export default function PreferencesScreen({ navigation }) {
     },
     {
       id: 3,
-      label: 'Language',
-      value: 'English',
-      icon: 'language',
-      iconBg: '#4CAF50',
-      screen: 'Language',
-    },
-    {
-      id: 4,
-      label: 'Theme mode',
+      label: 'Theme',
       value: 'Dark',
       icon: 'moon',
       iconBg: '#9C27B0',
       screen: 'ThemeMode',
     },
+    {
+      id: 4,
+      label: 'Language',
+      value: language,
+      icon: 'language',
+      iconBg: '#4CAF50',
+      screen: 'Language',
+    },
   ];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
       
       {/* Header */}
@@ -58,8 +62,8 @@ export default function PreferencesScreen({ navigation }) {
         >
           <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Preferences</Text>
-        <TouchableOpacity style={styles.notificationIcon}>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Preferences</Text>
+        <TouchableOpacity style={[styles.notificationIcon, { backgroundColor: colors.cardBackground }]}>
           <Ionicons name="notifications-outline" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
       </View>
@@ -69,16 +73,16 @@ export default function PreferencesScreen({ navigation }) {
           {menuItems.map((item) => (
             <TouchableOpacity
               key={item.id}
-              style={styles.menuItem}
+              style={[styles.menuItem, { backgroundColor: colors.cardBackground }]}
               onPress={() => navigation.navigate(item.screen)}
             >
               <View style={styles.menuItemLeft}>
                 <View style={[styles.iconContainer, { backgroundColor: item.iconBg }]}>
-                  <Ionicons name={item.icon} size={20} color={colors.textPrimary} />
+                  <Ionicons name={item.icon} size={20} color="#FFFFFF" />
                 </View>
                 <View style={styles.menuItemText}>
-                  <Text style={styles.menuItemLabel}>{item.label}</Text>
-                  <Text style={styles.menuItemValue}>{item.value}</Text>
+                  <Text style={[styles.menuItemLabel, { color: colors.textPrimary }]}>{item.label}</Text>
+                  <Text style={[styles.menuItemValue, { color: colors.textSecondary }]}>{item.value}</Text>
                 </View>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
@@ -93,7 +97,6 @@ export default function PreferencesScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -111,7 +114,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: colors.textPrimary,
     flex: 1,
     marginLeft: 8,
   },
@@ -119,7 +121,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.cardBackground,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -134,7 +135,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -158,11 +158,9 @@ const styles = StyleSheet.create({
   menuItemLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textPrimary,
     marginBottom: 4,
   },
   menuItemValue: {
     fontSize: 14,
-    color: colors.textSecondary,
   },
 });

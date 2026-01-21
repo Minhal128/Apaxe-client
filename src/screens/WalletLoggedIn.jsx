@@ -12,11 +12,14 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import RegisteredNavbar from '../components/RegisteredNavbar';
 import { userService } from '../services';
 
 export default function WalletLoggedIn({ navigation }) {
+  const { colors } = useTheme();
+  const { t } = useLanguage();
   const [depositModalVisible, setDepositModalVisible] = useState(false);
   const [withdrawModalVisible, setWithdrawModalVisible] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -65,7 +68,7 @@ export default function WalletLoggedIn({ navigation }) {
   const pnlPercent = dashboard?.todayPnlPercent || 0;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
       
       {/* Header */}
@@ -73,7 +76,7 @@ export default function WalletLoggedIn({ navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Add funds</Text>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{t.addFunds}</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -89,37 +92,37 @@ export default function WalletLoggedIn({ navigation }) {
             {/* Balance Card */}
             <View style={styles.balanceCard}>
               <View style={styles.balanceHeader}>
-                <Text style={styles.balanceLabel}>Your balance</Text>
+                <Text style={styles.balanceLabel}>{t.yourBalance}</Text>
                 <Ionicons name="help-circle-outline" size={16} color="#666" />
               </View>
               <Text style={styles.balanceAmount}>${balance.toLocaleString()}</Text>
               <Text style={[styles.balanceChange, { color: pnlPercent >= 0 ? colors.green : colors.red }]}>
-                Today's PNL   {pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
+                {t.todayPnl}   {pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
               </Text>
             </View>
 
             {/* Action Buttons */}
             <View style={styles.actionButtons}>
               <TouchableOpacity 
-                style={styles.actionButton}
+                style={[styles.actionButton, { backgroundColor: colors.cardBackground }]}
                 onPress={() => setDepositModalVisible(true)}
               >
-                <Text style={styles.actionButtonText}>Deposit</Text>
+                <Text style={[styles.actionButtonText, { color: colors.textPrimary }]}>{t.deposit}</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={styles.actionButton}
+                style={[styles.actionButton, { backgroundColor: colors.cardBackground }]}
                 onPress={() => setWithdrawModalVisible(true)}
               >
-                <Text style={styles.actionButtonText}>Withdraw</Text>
+                <Text style={[styles.actionButtonText, { color: colors.textPrimary }]}>{t.withdraw}</Text>
               </TouchableOpacity>
             </View>
 
             {/* Transaction History */}
-            <Text style={styles.sectionTitle}>Transaction history</Text>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{t.transactionHistory}</Text>
 
             {Array.isArray(transactions) && transactions.length > 0 ? transactions.map((transaction) => (
-              <View key={transaction.id} style={styles.transactionCard}>
-                <View style={styles.transactionIcon}>
+              <View key={transaction.id} style={[styles.transactionCard, { backgroundColor: colors.cardBackground }]}>
+                <View style={[styles.transactionIcon, { backgroundColor: colors.background }]}>
                   <Ionicons 
                     name={transaction.type === 'DEPOSIT' ? 'arrow-down' : 'arrow-up'} 
                     size={20} 
@@ -127,11 +130,11 @@ export default function WalletLoggedIn({ navigation }) {
                   />
                 </View>
                 <View style={styles.transactionInfo}>
-                  <Text style={styles.transactionType}>{transaction.type}</Text>
-                  <Text style={styles.transactionDate}>{new Date(transaction.createdAt).toLocaleDateString()}</Text>
+                  <Text style={[styles.transactionType, { color: colors.textPrimary }]}>{transaction.type}</Text>
+                  <Text style={[styles.transactionDate, { color: colors.textSecondary }]}>{new Date(transaction.createdAt).toLocaleDateString()}</Text>
                 </View>
                 <View style={styles.transactionRight}>
-                  <Text style={styles.transactionAmount}>${(transaction.amount || 0).toLocaleString()}</Text>
+                  <Text style={[styles.transactionAmount, { color: colors.textPrimary }]}>${(transaction.amount || 0).toLocaleString()}</Text>
                   <View style={[styles.statusBadge, { backgroundColor: (transaction.status === 'COMPLETED' ? colors.green : colors.textSecondary) + '20' }]}>
                     <Text style={[styles.statusText, { color: transaction.status === 'COMPLETED' ? colors.green : colors.textSecondary }]}>
                       {transaction.status}
@@ -140,7 +143,7 @@ export default function WalletLoggedIn({ navigation }) {
                 </View>
               </View>
             )) : (
-              <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 20 }}>No transactions yet</Text>
+              <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 20 }}>{t.noTransactionsYet}</Text>
             )}
           </>
         )}
@@ -153,7 +156,7 @@ export default function WalletLoggedIn({ navigation }) {
         animationType="slide"
         onRequestClose={() => setDepositModalVisible(false)}
       >
-        <DepositModal onClose={() => setDepositModalVisible(false)} />
+        <DepositModal onClose={() => setDepositModalVisible(false)} colors={colors} t={t} />
       </Modal>
 
       {/* Withdraw Modal */}
@@ -163,7 +166,7 @@ export default function WalletLoggedIn({ navigation }) {
         animationType="slide"
         onRequestClose={() => setWithdrawModalVisible(false)}
       >
-        <WithdrawModal onClose={() => setWithdrawModalVisible(false)} />
+        <WithdrawModal onClose={() => setWithdrawModalVisible(false)} colors={colors} t={t} />
       </Modal>
 
       <RegisteredNavbar navigation={navigation} activeScreen="wallet" />
@@ -172,7 +175,7 @@ export default function WalletLoggedIn({ navigation }) {
 }
 
 // Deposit Modal Component
-function DepositModal({ onClose }) {
+function DepositModal({ onClose, colors, t }) {
   const [amount, setAmount] = useState('');
   const [remarks, setRemarks] = useState('');
   const [loading, setLoading] = useState(false);
@@ -204,16 +207,16 @@ function DepositModal({ onClose }) {
   return (
     <View style={styles.modalOverlay}>
       <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={onClose} />
-      <View style={styles.modalContent}>
-        <View style={styles.modalHandle} />
-        <Text style={styles.modalTitle}>Deposit</Text>
+      <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
+        <View style={[styles.modalHandle, { backgroundColor: colors.textSecondary }]} />
+        <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{t.deposit}</Text>
         
         <View style={styles.inputContainer}>
-          <Text style={styles.inputLabel}>Amount to deposit</Text>
+          <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{t.amountToDeposit}</Text>
           <TextInput 
-            style={styles.input} 
+            style={[styles.input, { backgroundColor: colors.cardBackground, color: colors.textPrimary }]} 
             placeholderTextColor={colors.textSecondary}
-            placeholder="Enter amount"
+            placeholder={t.enterAmount}
             value={amount}
             onChangeText={setAmount}
             keyboardType="numeric"
@@ -221,23 +224,23 @@ function DepositModal({ onClose }) {
         </View>
 
         <View style={styles.inputContainer}>
-          <Text style={styles.inputLabel}>Remarks</Text>
+          <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{t.remarks}</Text>
           <TextInput 
-            style={styles.input} 
+            style={[styles.input, { backgroundColor: colors.cardBackground, color: colors.textPrimary }]} 
             placeholderTextColor={colors.textSecondary}
-            placeholder="Optional remarks"
+            placeholder={t.optionalRemarks}
             value={remarks}
             onChangeText={setRemarks}
           />
         </View>
 
         <TouchableOpacity 
-          style={[styles.submitButton, loading && { opacity: 0.6 }]} 
+          style={[styles.submitButton, { backgroundColor: colors.green }, loading && { opacity: 0.6 }]} 
           onPress={handleDeposit}
           disabled={loading}
         >
-          <Text style={styles.submitButtonText}>
-            {loading ? 'Processing...' : 'Deposit'}
+          <Text style={[styles.submitButtonText, { color: colors.textPrimary }]}>
+            {loading ? t.processing : t.deposit}
           </Text>
         </TouchableOpacity>
       </View>
@@ -246,7 +249,7 @@ function DepositModal({ onClose }) {
 }
 
 // Withdraw Modal Component
-function WithdrawModal({ onClose }) {
+function WithdrawModal({ onClose, colors, t }) {
   const [amount, setAmount] = useState('');
   const [remarks, setRemarks] = useState('');
   const [loading, setLoading] = useState(false);
@@ -278,16 +281,16 @@ function WithdrawModal({ onClose }) {
   return (
     <View style={styles.modalOverlay}>
       <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={onClose} />
-      <View style={styles.modalContent}>
-        <View style={styles.modalHandle} />
-        <Text style={styles.modalTitle}>Withdraw</Text>
+      <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
+        <View style={[styles.modalHandle, { backgroundColor: colors.textSecondary }]} />
+        <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{t.withdraw}</Text>
         
         <View style={styles.inputContainer}>
-          <Text style={styles.inputLabel}>Amount to withdraw</Text>
+          <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{t.amountToWithdraw}</Text>
           <TextInput 
-            style={styles.input} 
+            style={[styles.input, { backgroundColor: colors.cardBackground, color: colors.textPrimary }]} 
             placeholderTextColor={colors.textSecondary}
-            placeholder="Enter amount"
+            placeholder={t.enterAmount}
             value={amount}
             onChangeText={setAmount}
             keyboardType="numeric"
@@ -295,23 +298,23 @@ function WithdrawModal({ onClose }) {
         </View>
 
         <View style={styles.inputContainer}>
-          <Text style={styles.inputLabel}>Remarks</Text>
+          <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{t.remarks}</Text>
           <TextInput 
-            style={styles.input} 
+            style={[styles.input, { backgroundColor: colors.cardBackground, color: colors.textPrimary }]} 
             placeholderTextColor={colors.textSecondary}
-            placeholder="Optional remarks"
+            placeholder={t.optionalRemarks}
             value={remarks}
             onChangeText={setRemarks}
           />
         </View>
 
         <TouchableOpacity 
-          style={[styles.submitButton, loading && { opacity: 0.6 }]} 
+          style={[styles.submitButton, { backgroundColor: colors.green }, loading && { opacity: 0.6 }]} 
           onPress={handleWithdraw}
           disabled={loading}
         >
-          <Text style={styles.submitButtonText}>
-            {loading ? 'Processing...' : 'Confirm'}
+          <Text style={[styles.submitButtonText, { color: colors.textPrimary }]}>
+            {loading ? t.processing : t.confirm}
           </Text>
         </TouchableOpacity>
       </View>
@@ -322,7 +325,6 @@ function WithdrawModal({ onClose }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -335,7 +337,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: colors.textPrimary,
   },
   placeholder: {
     width: 24,
@@ -369,7 +370,6 @@ const styles = StyleSheet.create({
   },
   balanceChange: {
     fontSize: 14,
-    color: colors.green,
   },
   actionButtons: {
     flexDirection: 'row',
@@ -378,7 +378,6 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    backgroundColor: colors.cardBackground,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
@@ -386,18 +385,15 @@ const styles = StyleSheet.create({
   actionButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textPrimary,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textPrimary,
     marginBottom: 16,
   },
   transactionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -406,7 +402,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -417,12 +412,10 @@ const styles = StyleSheet.create({
   transactionType: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textPrimary,
     marginBottom: 4,
   },
   transactionDate: {
     fontSize: 13,
-    color: colors.textSecondary,
   },
   transactionRight: {
     alignItems: 'flex-end',
@@ -430,7 +423,6 @@ const styles = StyleSheet.create({
   transactionAmount: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textPrimary,
     marginBottom: 4,
   },
   statusBadge: {
@@ -451,7 +443,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   modalContent: {
-    backgroundColor: colors.background,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
@@ -460,7 +451,6 @@ const styles = StyleSheet.create({
   modalHandle: {
     width: 40,
     height: 4,
-    backgroundColor: colors.textSecondary,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 20,
@@ -468,7 +458,6 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: colors.textPrimary,
     marginBottom: 24,
     textAlign: 'center',
   },
@@ -477,19 +466,15 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     fontSize: 14,
-    color: colors.textSecondary,
     marginBottom: 8,
   },
   input: {
-    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     padding: 16,
-    color: colors.textPrimary,
     fontSize: 16,
     minHeight: 50,
   },
   submitButton: {
-    backgroundColor: colors.green,
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
@@ -498,6 +483,5 @@ const styles = StyleSheet.create({
   submitButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textPrimary,
   },
 });

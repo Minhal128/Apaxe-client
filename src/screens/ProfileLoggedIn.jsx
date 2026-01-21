@@ -14,7 +14,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
 import { useAppAuth } from '../contexts/AuthContext';
-import { colors } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import RegisteredNavbar from '../components/RegisteredNavbar';
 import LogoutModal from '../components/LogoutModal';
 import ConnectionTest from '../components/ConnectionTest';
@@ -22,6 +23,8 @@ import { authService } from '../services';
 
 export default function ProfileLoggedIn({ navigation }) {
   const { logout } = useAppAuth();
+  const { colors } = useTheme();
+  const { t } = useLanguage();
   // Get Clerk user for Google OAuth
   const clerkUserData = useUser();
   const clerkUser = clerkUserData?.user;
@@ -115,20 +118,20 @@ export default function ProfileLoggedIn({ navigation }) {
 
   if (loading) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+      <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={colors.green} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
       
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Account</Text>
-        <TouchableOpacity style={styles.notificationIcon}>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{t.account}</Text>
+        <TouchableOpacity style={[styles.notificationIcon, { backgroundColor: colors.cardBackground }]}>
           <Ionicons name="notifications-outline" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
       </View>
@@ -139,7 +142,7 @@ export default function ProfileLoggedIn({ navigation }) {
         contentContainerStyle={styles.scrollContent}
       >
         {/* User Profile Card */}
-        <View style={styles.profileCard}>
+        <View style={[styles.profileCard, { backgroundColor: colors.cardBackground }]}>
           <View style={styles.avatar}>
             {user?.imageUrl ? (
               <Image 
@@ -155,19 +158,19 @@ export default function ProfileLoggedIn({ navigation }) {
             )}
           </View>
           <View style={styles.profileInfo}>
-            <Text style={styles.userName}>
+            <Text style={[styles.userName, { color: colors.textPrimary }]}>
               {user?.firstName || user?.email?.split('@')[0] || 'User'} {user?.lastName || ''}
             </Text>
-            <Text style={styles.userId}>
+            <Text style={[styles.userId, { color: colors.textSecondary }]}>
               {user?.email || `user #${user?.id?.slice(-6) || '000000'}`}
             </Text>
           </View>
         </View>
 
         {/* Menu Items */}
-        <View style={styles.menuSection}>
+        <View style={[styles.menuSection, { backgroundColor: colors.cardBackground }]}>
           <TouchableOpacity 
-            style={styles.menuItem}
+            style={[styles.menuItem, { borderBottomColor: colors.border }]}
             onPress={() => navigation.navigate('ProfileInfo')}
           >
             <View style={styles.menuLeft}>
@@ -175,14 +178,14 @@ export default function ProfileLoggedIn({ navigation }) {
                 <Ionicons name="person-outline" size={20} color={colors.textPrimary} />
               </View>
               <View style={styles.menuText}>
-                <Text style={styles.menuTitle}>Profile Information</Text>
-                <Text style={styles.menuSubtitle}>View and manage your personal account</Text>
+                <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>{t.profileInformation}</Text>
+                <Text style={[styles.menuSubtitle, { color: colors.textSecondary }]}>{t.profileInfoDesc}</Text>
               </View>
             </View>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={styles.menuItem}
+            style={[styles.menuItem, { borderBottomColor: colors.border }]}
             onPress={() => navigation.navigate('Preferences')}
           >
             <View style={styles.menuLeft}>
@@ -190,14 +193,14 @@ export default function ProfileLoggedIn({ navigation }) {
                 <Ionicons name="settings-outline" size={20} color={colors.textPrimary} />
               </View>
               <View style={styles.menuText}>
-                <Text style={styles.menuTitle}>Preference</Text>
-                <Text style={styles.menuSubtitle}>Customize how your trading app looks</Text>
+                <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>{t.preference}</Text>
+                <Text style={[styles.menuSubtitle, { color: colors.textSecondary }]}>{t.preferenceDesc}</Text>
               </View>
             </View>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={styles.menuItem}
+            style={[styles.menuItem, { borderBottomColor: colors.border }]}
             onPress={() => navigation.navigate('Security')}
           >
             <View style={styles.menuLeft}>
@@ -205,14 +208,14 @@ export default function ProfileLoggedIn({ navigation }) {
                 <Ionicons name="shield-checkmark-outline" size={20} color={colors.textPrimary} />
               </View>
               <View style={styles.menuText}>
-                <Text style={styles.menuTitle}>Security</Text>
-                <Text style={styles.menuSubtitle}>Keep your trading account secure</Text>
+                <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>{t.security}</Text>
+                <Text style={[styles.menuSubtitle, { color: colors.textSecondary }]}>{t.securityDesc}</Text>
               </View>
             </View>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={styles.menuItem}
+            style={[styles.menuItem, { borderBottomColor: colors.border }]}
             onPress={() => setTestVisible(true)}
           >
             <View style={styles.menuLeft}>
@@ -220,14 +223,14 @@ export default function ProfileLoggedIn({ navigation }) {
                 <Ionicons name="wifi-outline" size={20} color={colors.textPrimary} />
               </View>
               <View style={styles.menuText}>
-                <Text style={styles.menuTitle}>Connection Test</Text>
-                <Text style={styles.menuSubtitle}>Test backend API connections</Text>
+                <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>{t.connectionTest}</Text>
+                <Text style={[styles.menuSubtitle, { color: colors.textSecondary }]}>{t.connectionTestDesc}</Text>
               </View>
             </View>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={styles.menuItem}
+            style={[styles.menuItem, { borderBottomColor: colors.border }]}
             onPress={() => navigation.navigate('AppInfo')}
           >
             <View style={styles.menuLeft}>
@@ -235,8 +238,8 @@ export default function ProfileLoggedIn({ navigation }) {
                 <Ionicons name="information-circle-outline" size={20} color={colors.textPrimary} />
               </View>
               <View style={styles.menuText}>
-                <Text style={styles.menuTitle}>App Info</Text>
-                <Text style={styles.menuSubtitle}>Access important details, support, and legal</Text>
+                <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>{t.appInfo}</Text>
+                <Text style={[styles.menuSubtitle, { color: colors.textSecondary }]}>{t.appInfoDesc}</Text>
               </View>
             </View>
           </TouchableOpacity>
@@ -244,13 +247,13 @@ export default function ProfileLoggedIn({ navigation }) {
 
         {/* Logout Button */}
         <TouchableOpacity 
-          style={styles.logoutButton}
+          style={[styles.logoutButton, { backgroundColor: colors.cardBackground }]}
           onPress={() => setLogoutVisible(true)}
         >
           <View style={styles.logoutIcon}>
             <Ionicons name="log-out-outline" size={20} color="#FF5252" />
           </View>
-          <Text style={styles.logoutText}>Logout</Text>
+          <Text style={styles.logoutText}>{t.logout}</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -260,7 +263,7 @@ export default function ProfileLoggedIn({ navigation }) {
         animationType="slide"
         presentationStyle="pageSheet"
       >
-        <View style={styles.modalHeader}>
+        <View style={[styles.modalHeader, { backgroundColor: colors.background }]}>
           <TouchableOpacity onPress={() => setTestVisible(false)}>
             <Ionicons name="close" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
@@ -284,7 +287,6 @@ export default function ProfileLoggedIn({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -297,13 +299,11 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: colors.textPrimary,
   },
   notificationIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.cardBackground,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -312,12 +312,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   scrollContent: {
-    paddingBottom: 100, // Add padding for navbar
+    paddingBottom: 100,
   },
   profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     padding: 16,
     marginBottom: 20,
@@ -344,15 +343,12 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 18,
     fontWeight: '600',
-    color: colors.textPrimary,
     marginBottom: 4,
   },
   userId: {
     fontSize: 13,
-    color: colors.textSecondary,
   },
   menuSection: {
-    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     marginBottom: 20,
     overflow: 'hidden',
@@ -361,7 +357,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   menuLeft: {
     flexDirection: 'row',
@@ -381,17 +376,14 @@ const styles = StyleSheet.create({
   menuTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textPrimary,
     marginBottom: 4,
   },
   menuSubtitle: {
     fontSize: 13,
-    color: colors.textSecondary,
   },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     padding: 16,
     marginBottom: 20,
@@ -415,6 +407,5 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     padding: 16,
     paddingTop: 50,
-    backgroundColor: colors.background,
   },
 });

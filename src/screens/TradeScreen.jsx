@@ -21,7 +21,7 @@ const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 48) / 2.5;
 
 const tabs = ['Top gainers', 'Top losers', 'Most active', 'Favorites'];
-const categories = ['Crypto', 'MCX', 'Forex', 'NSE', 'Equity', 'Commodity'];
+const marketSegments = ['NSE', 'MCX', 'Forex', 'Crypto', 'Equity', 'Commodity'];
 
 // Mini chart component for top movers cards
 const MiniChart = ({ isPositive, data = [] }) => {
@@ -102,7 +102,7 @@ const getIconColor = (symbol) => {
 export default function TradeScreen({ route, navigation }) {
   const { isLoggedIn = false } = route?.params || {};
   const [activeTab, setActiveTab] = useState('Top gainers');
-  const [selectedCategory, setSelectedCategory] = useState('Crypto');
+  const [selectedSegment, setSelectedSegment] = useState('NSE');
   const [topMovers, setTopMovers] = useState([]);
   const [instruments, setInstruments] = useState([]);
   const [favorites, setFavorites] = useState([]);
@@ -111,14 +111,26 @@ export default function TradeScreen({ route, navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
-  // Fetch top movers data based on active tab
+  // Fetch top movers data based on active tab and selected segment
   const fetchTopMovers = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Fetch all market data
-      const marketRes = await instrumentService.getMarketWatch('ALL');
+      // Map segment names to API segment names for backend
+      const segmentMap = {
+        'NSE': 'NSE',
+        'MCX': 'MCX',
+        'Forex': 'FOREX',
+        'Crypto': 'CRYPTO',
+        'Equity': 'EQUITY',
+        'Commodity': 'COMMODITY'
+      };
+      
+      const apiSegment = segmentMap[selectedSegment] || selectedSegment.toUpperCase();
+      
+      // Fetch market data for selected segment
+      const marketRes = await instrumentService.getMarketWatch(apiSegment);
       const allInstruments = marketRes?.data?.instruments || [];
       
       // Transform data
@@ -189,23 +201,24 @@ export default function TradeScreen({ route, navigation }) {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, isLoggedIn]);
+  }, [activeTab, isLoggedIn, selectedSegment]);
 
-  // Fetch instruments by category/segment
+  // Fetch instruments by selected market segment
   const fetchInstruments = useCallback(async () => {
     try {
       setInstrumentsLoading(true);
       
+      // Map segment names to API segment names for backend
       const segmentMap = {
-        'Crypto': 'CRYPTO',
+        'NSE': 'NSE',
         'MCX': 'MCX',
         'Forex': 'FOREX',
-        'NSE': 'NSE',
-        'Equity': 'NSE',
-        'Commodity': 'MCX'
+        'Crypto': 'CRYPTO',
+        'Equity': 'EQUITY',
+        'Commodity': 'COMMODITY'
       };
       
-      const apiSegment = segmentMap[selectedCategory] || 'ALL';
+      const apiSegment = segmentMap[selectedSegment] || selectedSegment.toUpperCase();
       const res = await instrumentService.getMarketWatch(apiSegment);
       const fetchedInstruments = res?.data?.instruments || [];
       
@@ -226,7 +239,7 @@ export default function TradeScreen({ route, navigation }) {
     } finally {
       setInstrumentsLoading(false);
     }
-  }, [selectedCategory]);
+  }, [selectedSegment]);
 
   useEffect(() => {
     fetchTopMovers();
@@ -309,7 +322,34 @@ export default function TradeScreen({ route, navigation }) {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
       
-      {/* Top Tabs */}
+      {/* Market Segment Tabs - Top header tabs */}
+      <View style={styles.segmentTabsContainer}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.segmentTabsContent}
+        >
+          {marketSegments.map((segment) => (
+            <TouchableOpacity
+              key={segment}
+              style={[
+                styles.segmentTab,
+                selectedSegment === segment && styles.segmentTabActive
+              ]}
+              onPress={() => setSelectedSegment(segment)}
+            >
+              <Text style={[
+                styles.segmentTabText,
+                selectedSegment === segment && styles.segmentTabTextActive
+              ]}>
+                {segment}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Top Tabs - Gainers/Losers/Active/Favorites */}
       <View style={styles.tabsContainer}>
         <ScrollView 
           horizontal 
@@ -372,38 +412,16 @@ export default function TradeScreen({ route, navigation }) {
                 <Text style={styles.emptyText}>
                   {activeTab === 'Favorites' 
                     ? (isLoggedIn ? 'No favorites yet. Add instruments to your watchlist.' : 'Login to view your favorites')
-                    : 'No instruments found'}
+                    : `No instruments found for ${selectedSegment}`}
                 </Text>
               </View>
             )}
           </ScrollView>
         )}
 
-        {/* Category Tabs */}
-        <View style={styles.categoriesWrapper}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoriesContainer}
-          >
-            {categories.map((category) => (
-              <TouchableOpacity
-                key={category}
-                style={[
-                  styles.categoryTab,
-                  selectedCategory === category && styles.categoryTabActive
-                ]}
-                onPress={() => setSelectedCategory(category)}
-              >
-                <Text style={[
-                  styles.categoryText,
-                  selectedCategory === category && styles.categoryTextActive
-                ]}>
-                  {category}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+        {/* Instruments List Section Header */}
+        <View style={styles.instrumentsHeader}>
+          <Text style={styles.instrumentsHeaderText}>{selectedSegment} Instruments</Text>
         </View>
 
         {/* Instruments List */}
@@ -416,7 +434,7 @@ export default function TradeScreen({ route, navigation }) {
             instruments.map(renderInstrumentRow)
           ) : (
             <View style={styles.emptyInstrumentsContainer}>
-              <Text style={styles.emptyText}>No instruments available for {selectedCategory}</Text>
+              <Text style={styles.emptyText}>No instruments available for {selectedSegment}</Text>
             </View>
           )}
         </View>
@@ -448,8 +466,35 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  tabsContainer: {
+  segmentTabsContainer: {
     paddingTop: 50,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: colors.background,
+  },
+  segmentTabsContent: {
+    paddingRight: 16,
+  },
+  segmentTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 8,
+    borderRadius: 20,
+    backgroundColor: colors.cardBackground,
+  },
+  segmentTabActive: {
+    backgroundColor: colors.textPrimary,
+  },
+  segmentTabText: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  segmentTabTextActive: {
+    color: colors.background,
+    fontWeight: '600',
+  },
+  tabsContainer: {
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -571,33 +616,15 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
   },
-  categoriesWrapper: {
-    marginTop: 8,
-  },
-  categoriesContainer: {
+  instrumentsHeader: {
     paddingHorizontal: 16,
     paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  categoryTab: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginRight: 10,
-    borderRadius: 20,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  categoryTabActive: {
-    backgroundColor: colors.textPrimary,
-    borderColor: colors.textPrimary,
-  },
-  categoryText: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  categoryTextActive: {
-    color: colors.background,
+  instrumentsHeaderText: {
+    color: colors.textPrimary,
+    fontSize: 16,
     fontWeight: '600',
   },
   instrumentsList: {

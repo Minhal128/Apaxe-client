@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -8,15 +8,15 @@ import {
   StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function ThemeModeScreen({ navigation }) {
-  const [selectedTheme, setSelectedTheme] = useState('Dark');
+  const { themeMode, colors, changeTheme } = useTheme();
 
-  const themes = ['Light', 'Dark', 'System Default'];
+  const themes = ['Dark'];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
       
       {/* Header */}
@@ -27,8 +27,8 @@ export default function ThemeModeScreen({ navigation }) {
         >
           <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Theme mode</Text>
-        <TouchableOpacity style={styles.notificationIcon}>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Theme mode</Text>
+        <TouchableOpacity style={[styles.notificationIcon, { backgroundColor: colors.cardBackground }]}>
           <Ionicons name="notifications-outline" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
       </View>
@@ -38,16 +38,16 @@ export default function ThemeModeScreen({ navigation }) {
           {themes.map((theme) => (
             <TouchableOpacity
               key={theme}
-              style={styles.optionItem}
-              onPress={() => setSelectedTheme(theme)}
+              style={[styles.optionItem, { backgroundColor: colors.cardBackground }]}
+              onPress={() => changeTheme(theme)}
             >
-              <Text style={styles.optionLabel}>{theme}</Text>
+              <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>{theme}</Text>
               <View style={[
                 styles.radio,
-                selectedTheme === theme && styles.radioSelected
+                { borderColor: themeMode === theme ? colors.green : colors.textSecondary }
               ]}>
-                {selectedTheme === theme && (
-                  <View style={styles.radioDot} />
+                {themeMode === theme && (
+                  <View style={[styles.radioDot, { backgroundColor: colors.green }]} />
                 )}
               </View>
             </TouchableOpacity>
@@ -61,7 +61,6 @@ export default function ThemeModeScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -79,7 +78,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: colors.textPrimary,
     flex: 1,
     marginLeft: 8,
   },
@@ -87,7 +85,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.cardBackground,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -102,7 +99,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -110,24 +106,18 @@ const styles = StyleSheet.create({
   optionLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textPrimary,
   },
   radio: {
     width: 24,
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: colors.textSecondary,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  radioSelected: {
-    borderColor: colors.green,
   },
   radioDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: colors.green,
   },
 });

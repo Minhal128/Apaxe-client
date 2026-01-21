@@ -13,7 +13,8 @@ import {
 import { Svg, Polyline, Defs, LinearGradient, Stop, Path } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { colors } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import RegisteredNavbar from '../components/RegisteredNavbar';
 import UnregisteredNavbar from '../components/UnregisteredNavbar';
 import { instrumentService, watchlistService } from '../services';
@@ -21,7 +22,7 @@ import { instrumentService, watchlistService } from '../services';
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 56) / 2.5;
 
-const tabs = ['Top gainers', 'Top losers', 'Most active', 'Favorites'];
+const tabs = ['topGainers', 'topLosers', 'mostActive', 'favorites'];
 const categories = ['Crypto', 'MCX', 'Forex', 'NSE', 'Equity', 'Commodity'];
 
 // Icon mapping for different symbols
@@ -51,7 +52,7 @@ const getIconConfig = (symbol) => {
 };
 
 // Mini chart component with gradient fill
-const MiniChart = ({ isPositive, data = [] }) => {
+const MiniChart = ({ isPositive, data = [], colors }) => {
   const chartWidth = 100;
   const chartHeight = 35;
   
@@ -132,7 +133,9 @@ const formatPrice = (price) => {
 
 export default function TradeOriginalScreen({ route, navigation }) {
   const { isLoggedIn = false } = route?.params || {};
-  const [activeTab, setActiveTab] = useState('Top gainers');
+  const { colors } = useTheme();
+  const { t } = useLanguage();
+  const [activeTab, setActiveTab] = useState('topGainers');
   const [selectedCategory, setSelectedCategory] = useState('Crypto');
   const [topMovers, setTopMovers] = useState([]);
   const [instruments, setInstruments] = useState([]);
@@ -166,24 +169,24 @@ export default function TradeOriginalScreen({ route, navigation }) {
       let sortedMovers = [];
       
       switch (activeTab) {
-        case 'Top gainers':
+        case 'topGainers':
           sortedMovers = transformedData
             .filter(item => item.changePercent > 0)
             .sort((a, b) => b.changePercent - a.changePercent)
             .slice(0, 10);
           break;
-        case 'Top losers':
+        case 'topLosers':
           sortedMovers = transformedData
             .filter(item => item.changePercent < 0)
             .sort((a, b) => a.changePercent - b.changePercent)
             .slice(0, 10);
           break;
-        case 'Most active':
+        case 'mostActive':
           sortedMovers = transformedData
             .sort((a, b) => (b.volume || 0) - (a.volume || 0))
             .slice(0, 10);
           break;
-        case 'Favorites':
+        case 'favorites':
           if (isLoggedIn) {
             try {
               const watchlistRes = await watchlistService.getDefaultWatchlist();
@@ -209,17 +212,17 @@ export default function TradeOriginalScreen({ route, navigation }) {
       
       setTopMovers(sortedMovers);
       
-      if (sortedMovers.length === 0 && activeTab !== 'Favorites') {
-        setError('No market data available');
+      if (sortedMovers.length === 0 && activeTab !== 'favorites') {
+        setError(t.noInstrumentsFound);
       }
     } catch (err) {
       console.log('Error fetching top movers:', err.message);
-      setError('Unable to load market data');
+      setError(t.error || 'Unable to load market data');
       setTopMovers([]);
     } finally {
       setLoading(false);
     }
-  }, [activeTab, isLoggedIn]);
+  }, [activeTab, isLoggedIn, t]);
 
   // Fetch instruments by category/segment
   const fetchInstruments = useCallback(async () => {
@@ -338,7 +341,7 @@ export default function TradeOriginalScreen({ route, navigation }) {
         <Text style={styles.cardPrice}>{formatPrice(item.price)}</Text>
         
         {/* Mini Chart */}
-        <MiniChart isPositive={isPositive} data={item.priceHistory} />
+        <MiniChart isPositive={isPositive} data={item.priceHistory} colors={colors} />
       </TouchableOpacity>
     );
   };
@@ -350,21 +353,21 @@ export default function TradeOriginalScreen({ route, navigation }) {
     return (
       <TouchableOpacity
         key={item.id || `${item.symbol}-${index}`}
-        style={styles.instrumentRow}
+        style={[styles.instrumentRow, { borderBottomColor: colors.border }]}
         onPress={() => navigateToChart(item)}
         activeOpacity={0.7}
       >
         <View style={styles.instrumentLeft}>
-          <Text style={styles.instrumentSymbol}>{item.symbol}</Text>
-          <Text style={styles.instrumentVolume}>{formatVolume(item.volume)} USDT</Text>
+          <Text style={[styles.instrumentSymbol, { color: colors.textPrimary }]}>{item.symbol}</Text>
+          <Text style={[styles.instrumentVolume, { color: colors.textSecondary }]}>{formatVolume(item.volume)} USDT</Text>
         </View>
         <View style={styles.instrumentRight}>
-          <Text style={styles.instrumentPrice}>{formatPrice(item.price)}</Text>
+          <Text style={[styles.instrumentPrice, { color: colors.textPrimary }]}>{formatPrice(item.price)}</Text>
           <View style={[
             styles.changeTag,
             { backgroundColor: isPositive ? colors.green : colors.red }
           ]}>
-            <Text style={styles.changeTagText}>
+            <Text style={[styles.changeTagText, { color: colors.textPrimary }]}>
               {isPositive ? '' : ''}{item.changePercent.toFixed(2)}%
             </Text>
           </View>
@@ -374,11 +377,11 @@ export default function TradeOriginalScreen({ route, navigation }) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
       
       {/* Top Tabs - Top gainers, Top losers, Most active, Favorites */}
-      <View style={styles.tabsContainer}>
+      <View style={[styles.tabsContainer, { borderBottomColor: colors.border }]}>
         <ScrollView 
           horizontal 
           showsHorizontalScrollIndicator={false}
@@ -387,14 +390,15 @@ export default function TradeOriginalScreen({ route, navigation }) {
           {tabs.map((tab) => (
             <TouchableOpacity
               key={tab}
-              style={[styles.tab, activeTab === tab && styles.tabActive]}
+              style={[styles.tab, activeTab === tab && { ...styles.tabActive, borderBottomColor: colors.textPrimary }]}
               onPress={() => setActiveTab(tab)}
             >
               <Text style={[
                 styles.tabText,
+                { color: activeTab === tab ? colors.textPrimary : colors.textSecondary },
                 activeTab === tab && styles.tabTextActive
               ]}>
-                {tab}
+                {t[tab]}
               </Text>
             </TouchableOpacity>
           ))}
@@ -417,14 +421,14 @@ export default function TradeOriginalScreen({ route, navigation }) {
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.green} />
-            <Text style={styles.loadingText}>Loading market data...</Text>
+            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>{t.loadingMarketData}</Text>
           </View>
         ) : error && topMovers.length === 0 ? (
           <View style={styles.errorContainer}>
             <Ionicons name="cloud-offline-outline" size={40} color={colors.textSecondary} />
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
-              <Text style={styles.retryButtonText}>Retry</Text>
+            <Text style={[styles.errorText, { color: colors.textSecondary }]}>{error}</Text>
+            <TouchableOpacity style={[styles.retryButton, { backgroundColor: colors.green }]} onPress={onRefresh}>
+              <Text style={[styles.retryButtonText, { color: colors.textPrimary }]}>{t.retry}</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -437,10 +441,10 @@ export default function TradeOriginalScreen({ route, navigation }) {
               topMovers.map((item, index) => renderTopMoverCard(item, index))
             ) : (
               <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>
-                  {activeTab === 'Favorites' 
-                    ? (isLoggedIn ? 'No favorites yet. Add instruments to your watchlist.' : 'Login to view your favorites')
-                    : 'No instruments found'}
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                  {activeTab === 'favorites' 
+                    ? (isLoggedIn ? t.noFavoritesYet : t.loginToViewFavorites)
+                    : t.noInstrumentsFound}
                 </Text>
               </View>
             )}
@@ -448,7 +452,7 @@ export default function TradeOriginalScreen({ route, navigation }) {
         )}
 
         {/* Category Tabs - Crypto, MCX, Forex, NSE, Equity, Commodity */}
-        <View style={styles.categoriesWrapper}>
+        <View style={[styles.categoriesWrapper, { borderBottomColor: colors.border }]}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -459,12 +463,14 @@ export default function TradeOriginalScreen({ route, navigation }) {
                 key={category}
                 style={[
                   styles.categoryTab,
-                  selectedCategory === category && styles.categoryTabActive
+                  { borderColor: colors.border },
+                  selectedCategory === category && { backgroundColor: colors.textPrimary, borderColor: colors.textPrimary }
                 ]}
                 onPress={() => setSelectedCategory(category)}
               >
                 <Text style={[
                   styles.categoryText,
+                  { color: selectedCategory === category ? colors.background : colors.textSecondary },
                   selectedCategory === category && styles.categoryTextActive
                 ]}>
                   {category}
@@ -484,7 +490,7 @@ export default function TradeOriginalScreen({ route, navigation }) {
             instruments.map((item, index) => renderInstrumentRow(item, index))
           ) : (
             <View style={styles.emptyInstrumentsContainer}>
-              <Text style={styles.emptyText}>No instruments available for {selectedCategory}</Text>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{t.noInstrumentsAvailable} {selectedCategory}</Text>
             </View>
           )}
         </View>
@@ -506,13 +512,11 @@ export default function TradeOriginalScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   // Top Tabs styles
   tabsContainer: {
     paddingTop: 50,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   tabsContent: {
     paddingHorizontal: 16,
@@ -524,15 +528,12 @@ const styles = StyleSheet.create({
   },
   tabActive: {
     borderBottomWidth: 2,
-    borderBottomColor: colors.textPrimary,
   },
   tabText: {
-    color: colors.textSecondary,
     fontSize: 14,
     fontWeight: '500',
   },
   tabTextActive: {
-    color: colors.textPrimary,
     fontWeight: '600',
   },
   // Content area
@@ -545,7 +546,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    color: colors.textSecondary,
     marginTop: 12,
     fontSize: 14,
   },
@@ -554,20 +554,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   errorText: {
-    color: colors.textSecondary,
     marginTop: 12,
     fontSize: 14,
     textAlign: 'center',
   },
   retryButton: {
-    backgroundColor: colors.green,
     paddingHorizontal: 24,
     paddingVertical: 10,
     borderRadius: 8,
     marginTop: 16,
   },
   retryButtonText: {
-    color: colors.textPrimary,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -576,7 +573,6 @@ const styles = StyleSheet.create({
     width: width - 32,
   },
   emptyText: {
-    color: colors.textSecondary,
     fontSize: 14,
     textAlign: 'center',
   },
@@ -653,7 +649,6 @@ const styles = StyleSheet.create({
   categoriesWrapper: {
     marginTop: 8,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   categoriesContainer: {
     paddingHorizontal: 16,
@@ -666,19 +661,14 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: colors.border,
   },
   categoryTabActive: {
-    backgroundColor: colors.textPrimary,
-    borderColor: colors.textPrimary,
   },
   categoryText: {
-    color: colors.textSecondary,
     fontSize: 13,
     fontWeight: '500',
   },
   categoryTextActive: {
-    color: colors.background,
     fontWeight: '600',
   },
   // Instruments list styles
@@ -700,18 +690,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   instrumentLeft: {
     flex: 1,
   },
   instrumentSymbol: {
-    color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '600',
   },
   instrumentVolume: {
-    color: colors.textSecondary,
     fontSize: 12,
     marginTop: 4,
   },
@@ -719,7 +706,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   instrumentPrice: {
-    color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -732,10 +718,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   changeTagText: {
-    color: colors.textPrimary,
     fontSize: 13,
     fontWeight: '600',
   },
-  // Floating Action Button
-  // fab removed
 });

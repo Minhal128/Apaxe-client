@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -8,15 +8,17 @@ import {
   StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export default function LanguageScreen({ navigation }) {
-  const [selectedLanguage, setSelectedLanguage] = useState('English');
+  const { colors } = useTheme();
+  const { language, changeLanguage } = useLanguage();
 
   const languages = ['English', 'Hindi', 'Spanish', 'German', 'Polish'];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
       
       {/* Header */}
@@ -27,27 +29,27 @@ export default function LanguageScreen({ navigation }) {
         >
           <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Language</Text>
-        <TouchableOpacity style={styles.notificationIcon}>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Language</Text>
+        <TouchableOpacity style={[styles.notificationIcon, { backgroundColor: colors.cardBackground }]}>
           <Ionicons name="notifications-outline" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.optionsSection}>
-          {languages.map((language) => (
+          {languages.map((lang) => (
             <TouchableOpacity
-              key={language}
-              style={styles.optionItem}
-              onPress={() => setSelectedLanguage(language)}
+              key={lang}
+              style={[styles.optionItem, { backgroundColor: colors.cardBackground }]}
+              onPress={() => changeLanguage(lang)}
             >
-              <Text style={styles.optionLabel}>{language}</Text>
+              <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>{lang}</Text>
               <View style={[
                 styles.radio,
-                selectedLanguage === language && styles.radioSelected
+                { borderColor: language === lang ? colors.green : colors.textSecondary }
               ]}>
-                {selectedLanguage === language && (
-                  <View style={styles.radioDot} />
+                {language === lang && (
+                  <View style={[styles.radioDot, { backgroundColor: colors.green }]} />
                 )}
               </View>
             </TouchableOpacity>
@@ -61,7 +63,6 @@ export default function LanguageScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -79,7 +80,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: colors.textPrimary,
     flex: 1,
     marginLeft: 8,
   },
@@ -87,7 +87,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.cardBackground,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -102,7 +101,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -110,24 +108,18 @@ const styles = StyleSheet.create({
   optionLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textPrimary,
   },
   radio: {
     width: 24,
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: colors.textSecondary,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  radioSelected: {
-    borderColor: colors.green,
   },
   radioDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: colors.green,
   },
 });

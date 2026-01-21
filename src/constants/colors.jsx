@@ -1,3 +1,4 @@
+// Dark theme colors (default)
 export const colors = {
   // Main colors
   primary: '#00D68F',

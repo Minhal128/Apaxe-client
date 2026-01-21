@@ -7,6 +7,8 @@ import * as Linking from 'expo-linking';
 import { tokenCache } from './src/services/tokenCache';
 import api from './src/services/api';
 import { AuthProvider } from './src/contexts/AuthContext';
+import { ThemeProvider } from './src/contexts/ThemeContext';
+import { LanguageProvider } from './src/contexts/LanguageContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import ErrorBoundary from './src/components/ErrorBoundary';
 
@@ -76,12 +78,16 @@ export default function App() {
       <ClerkProvider tokenCache={tokenCache} publishableKey={publishableKey}>
         <SafeAreaProvider>
           <ClerkLoaded>
-            <AuthProvider>
-              <ClerkApiBridge>
-                <StatusBar style="light" />
-                <AppNavigator />
-              </ClerkApiBridge>
-            </AuthProvider>
+            <ThemeProvider>
+              <LanguageProvider>
+                <AuthProvider>
+                  <ClerkApiBridge>
+                    <StatusBar style="light" />
+                    <AppNavigator />
+                  </ClerkApiBridge>
+                </AuthProvider>
+              </LanguageProvider>
+            </ThemeProvider>
           </ClerkLoaded>
         </SafeAreaProvider>
       </ClerkProvider>

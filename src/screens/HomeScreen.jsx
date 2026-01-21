@@ -10,10 +10,12 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../constants/colors';
 import { instrumentService, segmentService } from '../services';
 
 export default function HomeScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [instruments, setInstruments] = useState([]);
   const [segments, setSegments] = useState([]);
   const [selectedSegment, setSelectedSegment] = useState('MCX2');
@@ -55,48 +57,48 @@ export default function HomeScreen({ navigation }) {
       setLoading(true);
       setError(null);
       setHasApiError(false);
-      console.log('Fetching live market data for segment:', selectedSegment);
+      console.log('Fetching instruments for segment:', selectedSegment);
       
-      // Map UI segment names to API segment names
-      const segmentMap = {
-        'Crypto': 'CRYPTO',
-        'MCX2': 'MCX',
+      // Map UI segment names to segment IDs for filtering
+      const segmentIdMap = {
+        'MCX2': '6946a6bb2056b8e4a5319327',
         'Forex': 'FOREX',
         'NSE': 'NSE',
         'Equity': 'NSE',
         'Commodity': 'MCX'
       };
       
-      const apiSegment = segmentMap[selectedSegment] || 'ALL';
-      console.log('API segment:', apiSegment);
+      const segmentId = segmentIdMap[selectedSegment];
+      console.log('Segment ID:', segmentId);
       
-      // Fetch live market data from Redis cache via /market/segment endpoint
-      const res = await instrumentService.getMarketWatch(apiSegment);
-      console.log('Market data response:', res);
+      // Fetch instruments directly from /instruments endpoint (more reliable)
+      const params = segmentId ? { segment: segmentId } : {};
+      const res = await instrumentService.getInstruments(params);
+      console.log('Instruments response:', res);
       
-      // The response structure is { success: true, data: { instruments: [...], pagination: {...} } }
-      const instruments = res?.data?.instruments || [];
+      // The response structure is { success: true, data: [...], meta: {...} }
+      const instrumentsData = res?.data || [];
       
-      // Transform market data to match expected instrument format
-      const transformedData = instruments.map(item => ({
-        id: item.instrumentId || item.id,
+      // Transform instrument data to match expected format
+      const transformedData = instrumentsData.map(item => ({
+        id: item.id,
         symbol: item.symbol,
-        name: item.name || item.symbol,
-        lastPrice: item.currentPrice?.ltp || item.ltp || 0,
-        price: item.currentPrice?.ltp || item.ltp || 0,
-        changePercent: item.currentPrice?.changePercent || item.changePercent || 0,
-        volume: item.currentPrice?.volume || item.volume || 0,
-        segment: item.segment
+        name: item.name || item.displayName || item.symbol,
+        lastPrice: item.lastPrice || item.bidPrice || 0,
+        price: item.lastPrice || item.bidPrice || 0,
+        changePercent: item.changePercent || 0,
+        volume: item.volume || 0,
+        segment: item.segment?.name || selectedSegment
       }));
       
       setInstruments(transformedData);
       
       if (transformedData.length > 0) {
-        console.log(`✅ Loaded ${transformedData.length} live instruments`);
+        console.log(`✅ Loaded ${transformedData.length} instruments`);
       }
       
     } catch (err) {
-      console.log('Error fetching market data:', err.message);
+      console.log('Error fetching instruments:', err.message);
       setError('Unable to load market data. Please check your connection.');
       setHasApiError(true);
       setInstruments([]);
@@ -174,7 +176,7 @@ export default function HomeScreen({ navigation }) {
           <View style={styles.errorContainer}>
             <Ionicons name="cloud-offline-outline" size={48} color={colors.textSecondary} />
             <Text style={styles.errorText}>{error}</Text>
-            <Text style={styles.errorSubText}>Make sure the backend server is running on port 5000</Text>
+            <Text style={styles.errorSubText}>Please check your internet connection and try again</Text>
             <TouchableOpacity style={styles.retryButton} onPress={fetchInstruments}>
               <Text style={styles.retryButtonText}>Retry</Text>
             </TouchableOpacity>
@@ -183,7 +185,7 @@ export default function HomeScreen({ navigation }) {
           <TouchableOpacity
             key={crypto.id || crypto.symbol}
             style={styles.cryptoCard}
-            onPress={() => navigation.navigate('Chart', { symbol: crypto.symbol, instrumentId: crypto.id, isLoggedIn: false })}
+            onPress={() => navigation.navigate('CoinChart', { symbol: crypto.symbol, instrumentId: crypto.id, isLoggedIn: false })}
           >
             <View style={styles.cryptoLeft}>
               <Text style={styles.cryptoSymbol}>{crypto.symbol}</Text>
@@ -217,14 +219,14 @@ export default function HomeScreen({ navigation }) {
       </ScrollView>
 
       {/* Bottom Navbar */}
-      <View style={styles.bottomNavbar}>
+      <View style={[styles.bottomNavbar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         <TouchableOpacity style={styles.navItem}>
           <Ionicons name="home" size={24} color={colors.textPrimary} />
           <Text style={styles.navLabel}>Home</Text>
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.navItem}
-          onPress={() => navigation.navigate('Chart', { symbol: 'BTC/USDT', isLoggedIn: false })}
+          onPress={() => navigation.navigate('TradeOriginal', { isLoggedIn: false })}
         >
           <Ionicons name="bar-chart" size={24} color={colors.textSecondary} />
           <Text style={[styles.navLabel, { color: colors.textSecondary }]}>Trade</Text>
@@ -379,6 +381,7 @@ const styles = StyleSheet.create({
   cryptoList: {
     flex: 1,
     paddingHorizontal: 16,
+    paddingBottom: 100,
   },
   cryptoCard: {
     backgroundColor: colors.cardBackground,
@@ -443,7 +446,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     backgroundColor: colors.cardBackground,
     paddingVertical: 12,
-    paddingBottom: 16,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },

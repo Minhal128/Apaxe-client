@@ -10,12 +10,15 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import RegisteredNavbar from '../components/RegisteredNavbar';
 import ModifyPositionScreen from './ModifyPositionScreen';
 import { positionService, orderService } from '../services';
 
 export default function PositionLoggedIn({ navigation }) {
+  const { colors } = useTheme();
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('Positions');
   const [orderTab, setOrderTab] = useState('Pending'); // Add order sub-tab state
   const [modifyVisible, setModifyVisible] = useState(false);
@@ -61,18 +64,18 @@ export default function PositionLoggedIn({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
       
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Orders and positions</Text>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{t.ordersAndPositions}</Text>
         <View style={styles.headerIcons}>
-          <TouchableOpacity style={styles.iconButton}>
+          <TouchableOpacity style={[styles.iconButton, { backgroundColor: colors.cardBackground }]}>
             <Ionicons name="notifications-outline" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <TouchableOpacity 
-            style={styles.iconButton}
+            style={[styles.iconButton, { backgroundColor: colors.cardBackground }]}
             onPress={() => navigation.navigate('History')}
           >
             <Ionicons name="calendar-outline" size={24} color={colors.textPrimary} />
@@ -83,40 +86,40 @@ export default function PositionLoggedIn({ navigation }) {
       {/* Tabs */}
       <View style={styles.tabsContainer}>
         <TouchableOpacity 
-          style={[styles.tab, activeTab === 'Positions' && styles.tabActive]}
+          style={[styles.tab, activeTab === 'Positions' && { ...styles.tabActive, borderBottomColor: colors.textPrimary }]}
           onPress={() => setActiveTab('Positions')}
         >
-          <Text style={[styles.tabText, activeTab === 'Positions' && styles.tabTextActive]}>
-            Positions
+          <Text style={[styles.tabText, { color: activeTab === 'Positions' ? colors.textPrimary : colors.textSecondary }, activeTab === 'Positions' && styles.tabTextActive]}>
+            {t.positions}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity 
-          style={[styles.tab, activeTab === 'Orders' && styles.tabActive]}
+          style={[styles.tab, activeTab === 'Orders' && { ...styles.tabActive, borderBottomColor: colors.textPrimary }]}
           onPress={() => setActiveTab('Orders')}
         >
-          <Text style={[styles.tabText, activeTab === 'Orders' && styles.tabTextActive]}>
-            Orders
+          <Text style={[styles.tabText, { color: activeTab === 'Orders' ? colors.textPrimary : colors.textSecondary }, activeTab === 'Orders' && styles.tabTextActive]}>
+            {t.orders}
           </Text>
         </TouchableOpacity>
       </View>
 
       {/* Order Sub-tabs (only show when Orders tab is active) */}
       {activeTab === 'Orders' && (
-        <View style={styles.subTabsContainer}>
+        <View style={[styles.subTabsContainer, { backgroundColor: colors.cardBackground }]}>
           <TouchableOpacity 
-            style={[styles.subTab, orderTab === 'Pending' && styles.subTabActive]}
+            style={[styles.subTab, orderTab === 'Pending' && { backgroundColor: colors.textPrimary }]}
             onPress={() => setOrderTab('Pending')}
           >
-            <Text style={[styles.subTabText, orderTab === 'Pending' && styles.subTabTextActive]}>
-              Pending
+            <Text style={[styles.subTabText, { color: orderTab === 'Pending' ? colors.background : colors.textSecondary }, orderTab === 'Pending' && styles.subTabTextActive]}>
+              {t.pending}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity 
-            style={[styles.subTab, orderTab === 'Closed' && styles.subTabActive]}
+            style={[styles.subTab, orderTab === 'Closed' && { backgroundColor: colors.textPrimary }]}
             onPress={() => setOrderTab('Closed')}
           >
-            <Text style={[styles.subTabText, orderTab === 'Closed' && styles.subTabTextActive]}>
-              Closed
+            <Text style={[styles.subTabText, { color: orderTab === 'Closed' ? colors.background : colors.textSecondary }, orderTab === 'Closed' && styles.subTabTextActive]}>
+              {t.closed}
             </Text>
           </TouchableOpacity>
         </View>
@@ -133,50 +136,50 @@ export default function PositionLoggedIn({ navigation }) {
         ) : activeTab === 'Positions' ? (
           <>
             {Array.isArray(positions) && positions.length > 0 ? positions.map((position) => (
-              <View key={position.id} style={styles.positionCard}>
+              <View key={position.id} style={[styles.positionCard, { backgroundColor: colors.cardBackground }]}>
                 <View style={styles.positionHeader}>
                   <View style={[styles.typeBadge, position.side === 'BUY' ? styles.buyBadge : styles.shortBadge]}>
-                    <Text style={styles.typeBadgeText}>{position.side}</Text>
+                    <Text style={[styles.typeBadgeText, { color: colors.textPrimary }]}>{ position.side}</Text>
                   </View>
-                  <Text style={styles.positionPrice}>{(position.currentPrice || 0).toLocaleString()}</Text>
+                  <Text style={[styles.positionPrice, { color: colors.textPrimary }]}>{(position.currentPrice || 0).toLocaleString()}</Text>
                 </View>
                 
                 <View style={styles.positionBody}>
-                  <Text style={styles.positionSymbol}>{position.instrument?.symbol || 'Unknown'}</Text>
-                  <Text style={[styles.positionProfit, (position.unrealizedPnl || 0) >= 0 ? styles.profitPositive : styles.profitNegative]}>
+                  <Text style={[styles.positionSymbol, { color: colors.textPrimary }]}>{position.instrument?.symbol || 'Unknown'}</Text>
+                  <Text style={[styles.positionProfit, (position.unrealizedPnl || 0) >= 0 ? { color: colors.green } : { color: colors.red }]}>
                     ${(position.unrealizedPnl || 0).toFixed(2)} ({((position.unrealizedPnlPercent || 0)).toFixed(2)}%)
                   </Text>
                 </View>
                 
-                <Text style={styles.positionOption}>Qty: {position.quantity} @ {(position.avgPrice || 0).toFixed(2)}</Text>
+                <Text style={[styles.positionOption, { color: colors.textSecondary }]}>Qty: {position.quantity} @ {(position.avgPrice || 0).toFixed(2)}</Text>
                 
                 <View style={styles.positionDetails}>
                   <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>Size: {position.quantity}</Text>
-                    <Text style={styles.detailLabel}>P&L</Text>
+                    <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Size: {position.quantity}</Text>
+                    <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>P&L</Text>
                   </View>
                   <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>Avg: {(position.avgPrice || 0).toFixed(2)}</Text>
-                    <Text style={[styles.detailValue, (position.unrealizedPnl || 0) >= 0 ? styles.profitPositive : styles.profitNegative]}>
+                    <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Avg: {(position.avgPrice || 0).toFixed(2)}</Text>
+                    <Text style={[styles.detailValue, (position.unrealizedPnl || 0) >= 0 ? { color: colors.green } : { color: colors.red }]}>
                       {(position.unrealizedPnl || 0) >= 0 ? '+' : ''}{(position.unrealizedPnl || 0).toFixed(2)}
                     </Text>
                   </View>
                 </View>
                 
                 <View style={styles.positionActions}>
-                  <TouchableOpacity style={styles.actionBtn} onPress={() => handleClosePosition(position.id)}>
-                    <Text style={styles.actionBtnText}>Close</Text>
+                  <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.inputBackground }]} onPress={() => handleClosePosition(position.id)}>
+                    <Text style={[styles.actionBtnText, { color: colors.textPrimary }]}>{t.close}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
-                    style={styles.actionBtn}
+                    style={[styles.actionBtn, { backgroundColor: colors.inputBackground }]}
                     onPress={() => { setSelectedPosition(position); setModifyVisible(true); }}
                   >
-                    <Text style={styles.actionBtnText}>Modify</Text>
+                    <Text style={[styles.actionBtnText, { color: colors.textPrimary }]}>{t.modify}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             )) : (
-              <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 50 }}>No open positions</Text>
+              <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 50 }}>{t.noOpenPositions}</Text>
             )}
           </>
         ) : (
@@ -192,24 +195,24 @@ export default function PositionLoggedIn({ navigation }) {
               });
 
               return filteredOrders.length > 0 ? filteredOrders.map((order) => (
-                <View key={order.id} style={styles.orderCard}>
+                <View key={order.id} style={[styles.orderCard, { backgroundColor: colors.cardBackground }]}>
                   <View style={styles.orderLeft}>
-                    <View style={styles.orderIcon}>
+                    <View style={[styles.orderIcon, { backgroundColor: colors.inputBackground }]}>
                       <Ionicons name="swap-horizontal" size={20} color={colors.textPrimary} />
                     </View>
                     <View style={styles.orderInfo}>
-                      <Text style={styles.orderSymbol}>{order.instrument?.symbol || 'Unknown'}</Text>
+                      <Text style={[styles.orderSymbol, { color: colors.textPrimary }]}>{order.instrument?.symbol || 'Unknown'}</Text>
                       <Text style={styles.orderType}>{order.side} {order.quantity} at {(order.price || order.avgPrice || 0).toFixed(2)}</Text>
                     </View>
                   </View>
                   <View style={styles.orderRight}>
                     <Text style={[styles.orderStatus, { color: order.status === 'FILLED' ? colors.green : colors.textSecondary }]}>{order.status}</Text>
-                    <Text style={styles.orderDate}>{new Date(order.createdAt).toLocaleDateString()}</Text>
+                    <Text style={[styles.orderDate, { color: colors.textSecondary }]}>{new Date(order.createdAt).toLocaleDateString()}</Text>
                   </View>
                 </View>
               )) : (
                 <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 50 }}>
-                  No {orderTab.toLowerCase()} orders
+                  {t.noOrders.replace('{type}', orderTab.toLowerCase())}
                 </Text>
               );
             })()}
@@ -219,7 +222,7 @@ export default function PositionLoggedIn({ navigation }) {
 
       {/* Floating Action Button */}
       <TouchableOpacity 
-        style={styles.fab}
+        style={[styles.fab, { backgroundColor: colors.green }]}
         onPress={() => navigation.navigate('Chart', { isLoggedIn: true })}
       >
         <Ionicons name="add" size={28} color={colors.textPrimary} />
@@ -240,7 +243,6 @@ export default function PositionLoggedIn({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -253,7 +255,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: colors.textPrimary,
   },
   headerIcons: {
     flexDirection: 'row',
@@ -263,7 +264,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.cardBackground,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -280,22 +280,18 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
   },
   tabActive: {
-    borderBottomColor: colors.textPrimary,
   },
   tabText: {
     fontSize: 15,
-    color: colors.textSecondary,
     fontWeight: '500',
   },
   tabTextActive: {
-    color: colors.textPrimary,
     fontWeight: '600',
   },
   subTabsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
     marginBottom: 16,
-    backgroundColor: colors.cardBackground,
     borderRadius: 8,
     marginHorizontal: 16,
     padding: 4,
@@ -307,15 +303,12 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   subTabActive: {
-    backgroundColor: colors.textPrimary,
   },
   subTabText: {
     fontSize: 14,
-    color: colors.textSecondary,
     fontWeight: '500',
   },
   subTabTextActive: {
-    color: colors.background,
     fontWeight: '600',
   },
   content: {
@@ -323,7 +316,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   positionCard: {
-    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
@@ -343,17 +335,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#1E88E5',
   },
   shortBadge: {
-    backgroundColor: colors.red,
+    backgroundColor: '#FF4757',
   },
   typeBadgeText: {
-    color: colors.textPrimary,
     fontSize: 12,
     fontWeight: '600',
   },
   positionPrice: {
     fontSize: 18,
     fontWeight: '700',
-    color: colors.textPrimary,
   },
   positionBody: {
     flexDirection: 'row',
@@ -364,21 +354,17 @@ const styles = StyleSheet.create({
   positionSymbol: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textPrimary,
   },
   positionProfit: {
     fontSize: 14,
     fontWeight: '600',
   },
   profitPositive: {
-    color: colors.green,
   },
   profitNegative: {
-    color: colors.red,
   },
   positionOption: {
     fontSize: 13,
-    color: colors.textSecondary,
     marginBottom: 16,
   },
   positionDetails: {
@@ -391,7 +377,6 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     fontSize: 13,
-    color: colors.textSecondary,
   },
   detailValue: {
     fontSize: 13,
@@ -405,11 +390,9 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     borderRadius: 8,
-    backgroundColor: colors.inputBackground,
     alignItems: 'center',
   },
   actionBtnText: {
-    color: colors.textPrimary,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -417,7 +400,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -431,7 +413,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.inputBackground,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -442,7 +423,6 @@ const styles = StyleSheet.create({
   orderSymbol: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textPrimary,
     marginBottom: 4,
   },
   orderType: {
@@ -455,12 +435,10 @@ const styles = StyleSheet.create({
   orderStatus: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.textPrimary,
     marginBottom: 4,
   },
   orderDate: {
     fontSize: 12,
-    color: colors.textSecondary,
   },
   fab: {
     position: 'absolute',
@@ -469,7 +447,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: colors.green,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',

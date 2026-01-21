@@ -202,6 +202,72 @@ const userService = {
       };
     }
   },
+
+  // Update balance after simulated trade
+  async updateBalanceAfterTrade(amount, side, symbol) {
+    try {
+      const profileResponse = await api.get('/auth/profile');
+      if (!profileResponse.success || !profileResponse.data?.user?.id) {
+        throw new Error('Unable to get user profile');
+      }
+
+      const userId = profileResponse.data.user.id;
+      const type = side === 'BUY' ? 'DEBIT' : 'CREDIT';
+      const description = side === 'BUY' 
+        ? `Bought ${symbol}` 
+        : `Sold ${symbol}`;
+
+      const response = await api.post(`/users/${userId}/balance`, {
+        amount: parseFloat(Math.abs(amount)),
+        type: type,
+        description: description,
+        category: 'TRADE'
+      });
+
+      if (response.success) {
+        return {
+          success: true,
+          data: response.data
+        };
+      } else {
+        // If balance update fails (e.g., permission issue), return error but don't crash
+        console.log('Balance update failed:', response.error);
+        return {
+          success: false,
+          error: response.error?.message || 'Balance update failed'
+        };
+      }
+    } catch (error) {
+      console.error('Trade balance update error:', error);
+      return {
+        success: false,
+        error: error.message || 'Balance update failed'
+      };
+    }
+  },
+
+  // Get current balance from dashboard
+  async getBalance() {
+    try {
+      const response = await api.get('/users/dashboard');
+      if (response.success && response.data?.balance !== undefined) {
+        return {
+          success: true,
+          balance: response.data.balance
+        };
+      }
+      return {
+        success: false,
+        balance: 0
+      };
+    } catch (error) {
+      console.error('Error fetching balance:', error);
+      return {
+        success: false,
+        balance: 0
+      };
+    }
+  },
 };
 
 export { userService };

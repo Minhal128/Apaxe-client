@@ -1,9 +1,12 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../constants/colors';
 
 export default function UnregisteredNavbar({ navigation, activeScreen = 'home' }) {
+  const insets = useSafeAreaInsets();
+  
   // Safe navigation to home - handles both auth and unauth stacks
   const navigateToHome = () => {
     try {
@@ -16,7 +19,7 @@ export default function UnregisteredNavbar({ navigation, activeScreen = 'home' }
   };
   
   return (
-    <View style={styles.bottomNavbar}>
+    <View style={[styles.bottomNavbar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
       <TouchableOpacity 
         style={styles.navItem}
         onPress={navigateToHome}
@@ -37,11 +40,8 @@ export default function UnregisteredNavbar({ navigation, activeScreen = 'home' }
       <TouchableOpacity 
         style={styles.navItem}
         onPress={() => {
-          // Use reset to clear stack and navigate to TradeOriginal
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'TradeOriginal', params: { isLoggedIn: false } }],
-          });
+          // Navigate to TradeOriginal without resetting the stack
+          navigation.navigate('TradeOriginal', { isLoggedIn: false });
         }}
       >
         <Ionicons 
@@ -108,7 +108,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     backgroundColor: colors.cardBackground,
     paddingVertical: 12,
-    paddingBottom: 16,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },

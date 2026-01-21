@@ -156,24 +156,69 @@ const instrumentService = {
     };
   },
 
-  // Get real-time market data from Redis cache
+  // Get real-time market data - with fallback to /instruments endpoint
   async getMarketWatch(segment = 'ALL', params = {}) {
-    const query = new URLSearchParams(params).toString();
-    const response = await api.get(`/market/segment/${segment}${query ? `?${query}` : ''}`);
-    
-    if (!response.success && response.error?.code === 'AUTHENTICATION_ERROR') {
-      console.log('Market watch endpoint requires authentication');
+    try {
+      const query = new URLSearchParams(params).toString();
+      const response = await api.get(`/market/segment/${segment}${query ? `?${query}` : ''}`);
+      
+      if (!response.success && response.error?.code === 'AUTHENTICATION_ERROR') {
+        console.log('Market watch endpoint requires authentication');
+        return {
+          success: false,
+          data: { instruments: [], pagination: { total: 0 } },
+          error: 'Authentication required'
+        };
+      }
+      
       return {
-        success: false,
-        data: { instruments: [], pagination: { total: 0 } },
-        error: 'Authentication required'
+        success: response.success,
+        data: response.data || { instruments: [], pagination: { total: 0 } }
       };
+    } catch (error) {
+      // Fallback to /instruments endpoint if market endpoint fails/times out
+      console.log('Market endpoint failed, falling back to /instruments:', error.message);
+      
+      // Map segment names to segment IDs for filtering
+      const segmentIdMap = {
+        'MCX': '6946a6bb2056b8e4a5319327',
+        'MCX2': '6946a6bb2056b8e4a5319327',
+        'ALL': undefined
+      };
+      
+      const segmentId = segmentIdMap[segment];
+      const instrumentParams = segmentId ? { segment: segmentId, ...params } : params;
+      const queryString = new URLSearchParams(instrumentParams).toString();
+      
+      const fallbackResponse = await api.get(`/instruments${queryString ? `?${queryString}` : ''}`);
+      
+      if (fallbackResponse.success) {
+        const instruments = fallbackResponse.data || [];
+        return {
+          success: true,
+          data: {
+            instruments: instruments.map(item => ({
+              instrumentId: item.id,
+              id: item.id,
+              symbol: item.symbol,
+              name: item.name || item.displayName || item.symbol,
+              segment: item.segment?.name || segment,
+              currentPrice: {
+                ltp: item.lastPrice || item.bidPrice || 0,
+                changePercent: item.changePercent || 0,
+                volume: item.volume || 0
+              },
+              ltp: item.lastPrice || item.bidPrice || 0,
+              changePercent: item.changePercent || 0,
+              volume: item.volume || 0
+            })),
+            pagination: { total: instruments.length }
+          }
+        };
+      }
+      
+      throw error;
     }
-    
-    return {
-      success: response.success,
-      data: response.data || { instruments: [], pagination: { total: 0 } }
-    };
   },
 };
 
