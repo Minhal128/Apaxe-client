@@ -1452,13 +1452,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 25,
-    backgroundColor: '#1E2530',
-    borderWidth: 1,
-    borderColor: '#2A3040',
+    backgroundColor: 'transparent',
   },
   segmentTabActive: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#FFFFFF',
   },
   segmentTabText: {
     color: '#8F92A1',
@@ -1466,7 +1463,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   segmentTabTextActive: {
-    color: '#0f1419',
+    color: '#000000',
     fontWeight: '600',
   },
   priceChangeContainer: {
