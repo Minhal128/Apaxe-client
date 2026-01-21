@@ -2300,7 +2300,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#252838',
   },
   segmentTabActive: {
-    backgroundColor: '#5B8DEE',
+    backgroundColor: '#FFFFFF',
   },
   segmentTabText: {
     color: '#8F92A1',
@@ -2308,7 +2308,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   segmentTabTextActive: {
-    color: '#FFFFFF',
+    color: '#000000',
   },
   searchInputContainer: {
     flexDirection: 'row',
