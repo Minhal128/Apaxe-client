@@ -366,8 +366,10 @@ export default function HomeScreenLoggedIn({ navigation }) {
     });
   };
 
-  // Use API balance from dashboard
+  // Use API balance from dashboard - availableMargin shows what's available for trading
   const balance = dashboard?.balance || 0;
+  const availableMargin = dashboard?.availableMargin || 0;
+  const lockedMargin = dashboard?.lockedMargin || 0;
   const pnl = dashboard?.todayPnl || 0;
   const pnlPercent = dashboard?.todayPnlPercent || 0;
 
@@ -414,16 +416,16 @@ export default function HomeScreenLoggedIn({ navigation }) {
         {/* Balance Card */}
         <View style={[styles.balanceCard, { backgroundColor: colors.cardBackground }]}>
           <View style={styles.balanceHeader}>
-            <Text style={[styles.balanceLabel, { color: colors.textSecondary }]}>{t.yourBalance}</Text>
+            <Text style={[styles.balanceLabel, { color: colors.textSecondary }]}>Available Margin</Text>
             <Ionicons name="help-circle-outline" size={16} color={colors.textPrimary} />
           </View>
           <View style={styles.balanceMainRow}>
             <View>
-              <Text style={[styles.balanceAmount, { color: colors.textPrimary }]}>${balance.toLocaleString()}</Text>
+              <Text style={[styles.balanceAmount, { color: colors.textPrimary }]}>${availableMargin.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text>
               <View style={styles.balanceFooter}>
-                <Text style={[styles.pnlLabel, { color: colors.textSecondary }]}>{t.todayPnl}</Text>
-                <Text style={[styles.pnlValue, { color: pnlPercent >= 0 ? colors.green : colors.red }]}>
-                  {pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
+                <Text style={[styles.pnlLabel, { color: colors.textSecondary }]}>Total: ${balance.toLocaleString()}</Text>
+                <Text style={[styles.pnlValue, { color: colors.textSecondary }]}>
+                  Locked: ${lockedMargin.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                 </Text>
               </View>
             </View>
