@@ -18,14 +18,14 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLanguage } from '../contexts/LanguageContext';
-import { instrumentService, websocketService, userService, orderService, positionService } from '../services';
+import { instrumentService, websocketService, userService, orderService, positionService, segmentService } from '../services';
 import SearchCoinModal from '../components/SearchCoinModal';
 
 const { width, height } = Dimensions.get('window');
 const CHART_WIDTH = width - 80;
 const CHART_HEIGHT = 280;
 
-const timeframes = ['1m', '5m', '15m', '15m', '1d', 'More'];
+const timeframes = ['1m', '5m', '15m', '30m', '1h', '1d', 'More'];
 
 function createSeededRNG(seedString) {
   let h = 2166136261 >>> 0;
@@ -43,10 +43,10 @@ function generateDummyOHLC(seedString, count = 50, basePrice = 64000) {
   const rnd = createSeededRNG(String(seedString || 'default'));
   const candles = [];
   let prevClose = basePrice + (rnd() - 0.5) * basePrice * 0.02;
-  
+
   const now = Date.now();
-  const interval = 60 * 60 * 1000;
-  
+  const interval = 5 * 60 * 1000; // 5 minute intervals as requested
+
   for (let i = 0; i < count; i++) {
     const changePct = (rnd() - 0.5) * 0.015;
     const close = Math.max(0.0001, prevClose * (1 + changePct));
@@ -58,12 +58,12 @@ function generateDummyOHLC(seedString, count = 50, basePrice = 64000) {
     const open = prevClose;
     const volume = Math.round(rnd() * 1000000 + 500000);
     const time = now - (count - i) * interval;
-    
-    candles.push({ 
-      open: Number(open.toFixed(2)), 
-      high: Number(high.toFixed(2)), 
-      low: Number(low.toFixed(2)), 
-      close: Number(close.toFixed(2)), 
+
+    candles.push({
+      open: Number(open.toFixed(2)),
+      high: Number(high.toFixed(2)),
+      low: Number(low.toFixed(2)),
+      close: Number(close.toFixed(2)),
       volume,
       time,
       positive: close >= open
@@ -79,7 +79,14 @@ const formatPrice = (price) => {
 };
 
 const formatTimeLabel = (timestamp) => {
-  const date = new Date(timestamp);
+  let ts = timestamp;
+  if (typeof ts === 'string' && !isNaN(Number(ts))) ts = Number(ts);
+  if (!ts) ts = Date.now();
+  if (typeof ts === 'number' && ts < 10000000000) ts = ts * 1000;
+
+  let date = new Date(ts);
+  if (isNaN(date.getTime())) date = new Date();
+
   const hours = date.getHours().toString().padStart(2, '0');
   const minutes = date.getMinutes().toString().padStart(2, '0');
   return `${hours}:${minutes}`;
@@ -105,7 +112,7 @@ export default function CoinChartScreen({ route, navigation }) {
   const [stopLoss, setStopLoss] = useState(0);
   const [takeProfit, setTakeProfit] = useState(0);
   const [selectedCandle, setSelectedCandle] = useState(null);
-  
+
   // Order type options
   const ORDER_TYPES = [
     { value: 'MARKET', label: 'Market order' },
@@ -113,7 +120,7 @@ export default function CoinChartScreen({ route, navigation }) {
     { value: 'STOP', label: 'Stop order' },
     { value: 'STOP_LIMIT', label: 'Stop-Limit order' },
   ];
-  
+
   // Market watch data
   const [marketWatchData, setMarketWatchData] = useState([]);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
@@ -122,8 +129,9 @@ export default function CoinChartScreen({ route, navigation }) {
   const [searchSegment, setSearchSegment] = useState('NSE');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('NSE');
-  const [categories, setCategories] = useState(['NSE', 'MCX', 'Forex', 'Crypto', 'Equity', 'Community']);
-  
+  const [categories, setCategories] = useState(['NSE', 'MCX', 'FOREX', 'CRYPTO', 'EQUITY', 'COMMUNITY']);
+  const [rawSegments, setRawSegments] = useState({}); // To map display names back to raw names
+
   const [userBalance, setUserBalance] = useState({
     balance: 0,
     availableMargin: 0,
@@ -134,19 +142,20 @@ export default function CoinChartScreen({ route, navigation }) {
   const [closedPositions, setClosedPositions] = useState([]); // Closed positions history
   const [currentUserId, setCurrentUserId] = useState(userId);
   const [orderLoading, setOrderLoading] = useState(false);
-  
+
   const [loading, setLoading] = useState(true);
+  const [loadingOHLC, setLoadingOHLC] = useState(false);
   const [instrumentData, setInstrumentData] = useState(null);
   const [candlestickData, setCandlestickData] = useState([]);
   const [livePrice, setLivePrice] = useState(null);
-  
+
   const successAnim = useRef(new Animated.Value(0)).current;
   const unsubscribeRef = useRef(null);
 
   // Fetch positions, orders and balance from API
   const fetchUserData = useCallback(async () => {
     if (!isLoggedIn) return;
-    
+
     try {
       const [balanceRes, positionsRes, ordersRes, orderHistoryRes, positionHistoryRes] = await Promise.all([
         userService.getBalance().catch(() => ({ success: false })),
@@ -155,7 +164,7 @@ export default function CoinChartScreen({ route, navigation }) {
         orderService.getOrderHistory().catch(() => ({ success: false, data: [] })),
         positionService.getPositionHistory().catch(() => ({ success: false, data: [] }))
       ]);
-      
+
       if (balanceRes.success) {
         setUserBalance({
           balance: balanceRes.balance || 0,
@@ -163,22 +172,22 @@ export default function CoinChartScreen({ route, navigation }) {
           lockedMargin: balanceRes.lockedMargin || 0,
         });
       }
-      
+
       // Set open positions
       if (positionsRes.success) {
         setPositions(positionsRes.data || []);
       }
-      
+
       // Combine orders for pending/filled filtering
       if (ordersRes.success || orderHistoryRes.success) {
         const allOrders = [...(ordersRes.data || []), ...(orderHistoryRes.data || [])];
         // Remove duplicates by id
-        const uniqueOrders = allOrders.filter((order, index, self) => 
+        const uniqueOrders = allOrders.filter((order, index, self) =>
           index === self.findIndex(o => o.id === order.id)
         );
         setOrders(uniqueOrders);
       }
-      
+
       // Set closed positions
       if (positionHistoryRes.success) {
         setClosedPositions(positionHistoryRes.data || []);
@@ -194,30 +203,28 @@ export default function CoinChartScreen({ route, navigation }) {
       fetchUserData();
     }
   }, [isLoggedIn, fetchUserData]);
-  
+
   // Fetch market watch data based on selected category
   useEffect(() => {
     const fetchMarketWatch = async () => {
       try {
-        // Map category names to API segment names
-        const segmentMap = {
-          'NSE': 'NSE',
-          'MCX': 'MCX',
-          'Forex': 'FOREX',
-          'Crypto': 'CRYPTO',
-          'Equity': 'EQUITY',
-          'Commodity': 'COMMODITY'
-        };
-        const apiSegment = segmentMap[selectedCategory] || selectedCategory.toUpperCase();
+        const apiSegment = rawSegments[selectedCategory] || selectedCategory;
         const response = await instrumentService.getMarketWatch(apiSegment);
         const instruments = response?.data?.instruments || [];
         setMarketWatchData(instruments.slice(0, 20));
+
+        // Auto-load first instrument of segment if current symbol is not in this segment
+        if (instruments.length > 0 && !instruments.some(i => i.symbol === symbol)) {
+          console.log('Segment changed, loading first instrument:', instruments[0].symbol);
+          // Don't auto-replace unless manually triggered or on first load within segment context
+          // For now, let's keep it manual to avoid surprising the user, but we'll ensures sparklines work
+        }
       } catch (e) {
         console.log('Error fetching market watch:', e);
       }
     };
     fetchMarketWatch();
-  }, [selectedCategory]);
+  }, [selectedCategory, rawSegments]);
 
   // Search instruments by segment
   const searchInstruments = async (segment, query = '') => {
@@ -225,7 +232,7 @@ export default function CoinChartScreen({ route, navigation }) {
       const response = await instrumentService.getMarketWatch(segment);
       let instruments = response?.data?.instruments || [];
       if (query) {
-        instruments = instruments.filter(i => 
+        instruments = instruments.filter(i =>
           i.symbol?.toLowerCase().includes(query.toLowerCase()) ||
           i.name?.toLowerCase().includes(query.toLowerCase())
         );
@@ -242,7 +249,7 @@ export default function CoinChartScreen({ route, navigation }) {
       searchInstruments(searchSegment, searchQuery);
     }
   }, [searchModalVisible, searchSegment, searchQuery]);
-  
+
   // Display balance from API - use availableMargin for trading decisions
   const displayBalance = userBalance?.balance || 0;
   const displayAvailableMargin = userBalance?.availableMargin || 0;
@@ -261,19 +268,19 @@ export default function CoinChartScreen({ route, navigation }) {
     const qty = parseFloat(quantity) || 1;
     const price = currentPrice || 64000;
     const totalCost = qty * price;
-    
+
     // Use selected instrument from dropdown if available, otherwise fall back to current instrument
     const tradeInstrument = selectedInstrument || instrumentData;
     const tradeSymbol = selectedInstrument?.symbol || symbol;
     const actualInstrumentId = tradeInstrument?.id || tradeInstrument?.instrumentId || instrumentId;
-    
+
     if (!actualInstrumentId) {
       Alert.alert('Error', 'Instrument not found. Please try again.');
       return;
     }
-    
+
     setOrderLoading(true);
-    
+
     // Use availableMargin for balance check, not total balance
     if (tradeType === 'BUY') {
       if (totalCost > displayAvailableMargin) {
@@ -286,7 +293,7 @@ export default function CoinChartScreen({ route, navigation }) {
         return;
       }
     }
-    
+
     try {
       // Place order through the orders API - this handles balance internally
       // Build order data based on order type (matching CreateOrderModal format)
@@ -310,11 +317,11 @@ export default function CoinChartScreen({ route, navigation }) {
       if (takeProfit > 0) {
         orderData.takeProfit = takeProfit;
       }
-      
+
       console.log('Placing order with data:', JSON.stringify(orderData));
-      
+
       const orderResult = await orderService.placeOrder(orderData);
-      
+
       if (orderResult.success) {
         // Fetch updated balance from API
         const newBalanceResult = await userService.getBalance();
@@ -325,7 +332,7 @@ export default function CoinChartScreen({ route, navigation }) {
             lockedMargin: newBalanceResult.lockedMargin || 0,
           });
         }
-        
+
         setOrderResult({
           type: tradeType,
           symbol: tradeSymbol,
@@ -334,11 +341,11 @@ export default function CoinChartScreen({ route, navigation }) {
           total: totalCost,
           newBalance: newBalanceResult.success ? newBalanceResult.availableMargin : displayAvailableMargin,
         });
-        
+
         setOrderLoading(false);
         setOrderModalVisible(false);
         setSuccessModalVisible(true);
-        
+
         Animated.sequence([
           Animated.timing(successAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
           Animated.delay(2000),
@@ -370,15 +377,24 @@ export default function CoinChartScreen({ route, navigation }) {
         changePercent: data.changePercent,
         volume: data.volume,
       }));
-      
+
       setCandlestickData(prevCandles => {
         if (prevCandles.length === 0) return prevCandles;
-        
+
         const updatedCandles = [...prevCandles];
         const lastCandle = updatedCandles[updatedCandles.length - 1];
         const currentTime = Date.now();
-        const candleInterval = 5 * 60 * 1000;
-        
+        const timeframeMultipliers = {
+          '1m': 1,
+          '5m': 5,
+          '15m': 15,
+          '30m': 30,
+          '1h': 60,
+          '1d': 1440
+        };
+        const intervalInMinutes = timeframeMultipliers[selectedTimeframe] || 15;
+        const candleInterval = intervalInMinutes * 60 * 1000;
+
         if (currentTime - lastCandle.time < candleInterval) {
           lastCandle.close = data.ltp;
           lastCandle.high = Math.max(lastCandle.high, data.ltp);
@@ -396,16 +412,16 @@ export default function CoinChartScreen({ route, navigation }) {
             positive: data.ltp >= lastCandle.close
           };
           updatedCandles.push(newCandle);
-          
+
           if (updatedCandles.length > 50) {
             updatedCandles.shift();
           }
         }
-        
+
         return updatedCandles;
       });
     }
-  }, [instrumentId, symbol]);
+  }, [instrumentId, symbol, selectedTimeframe]);
 
   useEffect(() => {
     if (isLoggedIn && instrumentId) {
@@ -413,14 +429,60 @@ export default function CoinChartScreen({ route, navigation }) {
       unsubscribeRef.current = websocketService.subscribe('price', handlePriceUpdate);
       websocketService.subscribeToInstrument(instrumentId);
     }
-    
+
     return () => {
       if (unsubscribeRef.current) unsubscribeRef.current();
       if (instrumentId) websocketService.unsubscribeFromInstrument(instrumentId);
     };
   }, [isLoggedIn, instrumentId, handlePriceUpdate]);
 
-  const fetchInstrumentData = async () => {
+  const fetchSegments = useCallback(async () => {
+    try {
+      const response = await segmentService.getSegments();
+      if (response.success) {
+        let segs = response.data?.segments || response.data || [];
+        if (!Array.isArray(segs)) segs = [];
+
+        const nameMap = {
+          'apex': 'NSE',
+          'crypto': 'CRYPTO',
+          'mcx2': 'MCX',
+          'mcx': 'MCX',
+          'test': 'EQUITY',
+          'test1': 'COMMUNITY',
+          'forex': 'FOREX',
+          'nse': 'NSE',
+          'equity': 'EQUITY',
+          'community': 'COMMUNITY'
+        };
+
+        const mappedRaw = {};
+        const displayNames = [];
+
+        segs.forEach(s => {
+          const raw = (s.name || s).toLowerCase();
+          const display = nameMap[raw] || raw.toUpperCase();
+          if (!displayNames.includes(display)) {
+            displayNames.push(display);
+            mappedRaw[display] = s.name || s;
+          }
+        });
+
+        if (displayNames.length > 0) {
+          setCategories(displayNames);
+          setRawSegments(mappedRaw);
+          if (!displayNames.includes(selectedCategory)) {
+            setSelectedCategory(displayNames[0]);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching segments:', error);
+      // Keep defaults on error
+    }
+  }, [selectedCategory]);
+
+  const fetchInstrumentDetails = async () => {
     try {
       if (instrumentId) {
         const response = await instrumentService.getInstrument(instrumentId);
@@ -437,7 +499,7 @@ export default function CoinChartScreen({ route, navigation }) {
           setInstrumentData(data);
         }
       }
-      
+
       if (!instrumentData) {
         setInstrumentData({
           id: instrumentId,
@@ -447,17 +509,6 @@ export default function CoinChartScreen({ route, navigation }) {
           lastPrice: 64000,
           changePercent: 0.81,
         });
-      }
-      
-      if (instrumentId) {
-        try {
-          const ohlcResponse = await instrumentService.getOHLC(instrumentId);
-          if (ohlcResponse.success && Array.isArray(ohlcResponse.data)) {
-            setCandlestickData(ohlcResponse.data);
-          }
-        } catch (e) {
-          console.log('OHLC not available');
-        }
       }
     } catch (error) {
       console.log('Error fetching instrument:', error.message);
@@ -472,14 +523,82 @@ export default function CoinChartScreen({ route, navigation }) {
     }
   };
 
+  const fetchOHLCData = async () => {
+    if (!instrumentId) return;
+    try {
+      const timeframeMap = {
+        '1m': '1m',
+        '5m': '5m',
+        '15m': '15m',
+        '30m': '30m',
+        '1h': '1h',
+        '1d': '1d'
+      };
+      const apiTimeframe = timeframeMap[selectedTimeframe] || '15m';
+      const ohlcResponse = await instrumentService.getOHLC(instrumentId, apiTimeframe);
+      if (ohlcResponse.success && Array.isArray(ohlcResponse.data)) {
+        // Normalize field names and strictly enforce sequential timestamps
+        const now = Date.now();
+        const timeframeMultipliers = { '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '1d': 1440 };
+        const intervalMs = (timeframeMultipliers[selectedTimeframe] || 5) * 60 * 1000;
+
+        const normalized = ohlcResponse.data.map((d, index) => {
+          let candleTime = d.time || d.t || d.timestamp;
+          if (typeof candleTime === 'number' && candleTime < 10000000000) candleTime *= 1000;
+
+          // Generate strictly sequential fallback to ensure 5m difference if data is missing or broken
+          const fallbackTime = now - (ohlcResponse.data.length - index) * intervalMs;
+
+          return {
+            ...d,
+            time: (candleTime && !isNaN(new Date(candleTime).getTime())) ? candleTime : fallbackTime,
+            open: d.open || d.o || 0,
+            high: d.high || d.h || 0,
+            low: d.low || d.l || 0,
+            close: d.close || d.c || 0,
+            volume: d.volume || d.v || 0,
+            positive: (d.close || d.c || 0) >= (d.open || d.o || 0)
+          };
+        });
+        setCandlestickData(normalized);
+      }
+    } catch (e) {
+      console.log('OHLC not available');
+    }
+  };
+
+  const fetchInstrumentData = async () => {
+    await fetchInstrumentDetails();
+    await fetchOHLCData();
+  };
+
   useEffect(() => {
-    const loadData = async () => {
+    const loadInitialData = async () => {
       setLoading(true);
-      await fetchInstrumentData();
+      await Promise.all([
+        fetchInstrumentDetails(),
+        fetchOHLCData(),
+        fetchSegments()
+      ]);
       setLoading(false);
     };
-    loadData();
+    loadInitialData();
   }, []);
+
+  useEffect(() => {
+    const updateOHLC = async () => {
+      setLoadingOHLC(true);
+      if (typeof fetchOHLCData === 'function') {
+        await fetchOHLCData();
+      } else {
+        await fetchInstrumentData();
+      }
+      setLoadingOHLC(false);
+    };
+    if (!loading) {
+      updateOHLC();
+    }
+  }, [selectedTimeframe]);
 
   const seed = `${symbol || ''}-${instrumentId || ''}`;
   const basePrice = instrumentData?.lastPrice || instrumentData?.currentPrice || 64000;
@@ -489,20 +608,20 @@ export default function CoinChartScreen({ route, navigation }) {
 
   const chartData = useMemo(() => {
     if (chartCandles.length === 0) return { candles: [], yMin: 0, yMax: 0, yLabels: [] };
-    
+
     const highs = chartCandles.map(c => c.high);
     const lows = chartCandles.map(c => c.low);
     const volumes = chartCandles.map(c => c.volume);
-    
+
     const yMin = Math.min(...lows) * 0.9995;
     const yMax = Math.max(...highs) * 1.0005;
     const maxVolume = Math.max(...volumes);
-    
+
     const yRange = yMax - yMin;
     const yLabels = Array(7).fill(0).map((_, i) => {
       return yMax - (yRange * i / 6);
     });
-    
+
     return { yMin, yMax, yLabels, maxVolume };
   }, [chartCandles]);
 
@@ -510,7 +629,7 @@ export default function CoinChartScreen({ route, navigation }) {
   const priceChange = instrumentData?.changePercent || 0.81;
   const bidPrice = (currentPrice * 0.99999).toFixed(5);
   const askPrice = (currentPrice * 1.00001).toFixed(5);
-  
+
   const generateOrderBook = useCallback((price, count = 10) => {
     if (!price) return [];
     const orders = [];
@@ -543,14 +662,14 @@ export default function CoinChartScreen({ route, navigation }) {
     const candleWidth = Math.max(6, (CHART_WIDTH - 20) / chartCandles.length);
     const volumeHeight = 50;
     const priceChartHeight = CHART_HEIGHT - volumeHeight - 30;
-    
+
     const { yMin, yMax, yLabels, maxVolume } = chartData;
     const yRange = yMax - yMin;
-    
+
     const scaleY = (price) => {
       return priceChartHeight - ((price - yMin) / yRange) * priceChartHeight + 5;
     };
-    
+
     const scaleVolume = (vol) => {
       return (vol / maxVolume) * volumeHeight;
     };
@@ -561,6 +680,11 @@ export default function CoinChartScreen({ route, navigation }) {
 
     return (
       <View style={styles.chartContainer}>
+        {loadingOHLC && (
+          <View style={styles.chartLoadingOverlay}>
+            <ActivityIndicator size="small" color="#00D68F" />
+          </View>
+        )}
         {/* Selected candle info overlay */}
         {selectedCandle && (
           <View style={styles.candleInfoOverlay}>
@@ -580,10 +704,10 @@ export default function CoinChartScreen({ route, navigation }) {
             </View>
           </View>
         )}
-        
+
         <View style={styles.chartRow}>
-          <TouchableOpacity 
-            style={styles.chartSvgContainer} 
+          <TouchableOpacity
+            style={styles.chartSvgContainer}
             activeOpacity={1}
             onPress={() => setSelectedCandle(null)}
           >
@@ -593,7 +717,7 @@ export default function CoinChartScreen({ route, navigation }) {
                   const x = i * candleWidth + candleWidth * 0.15;
                   const volHeight = scaleVolume(candle.volume);
                   const volY = CHART_HEIGHT - volHeight - 5;
-                  
+
                   return (
                     <Rect
                       key={`vol-${i}`}
@@ -607,20 +731,20 @@ export default function CoinChartScreen({ route, navigation }) {
                   );
                 })}
               </G>
-              
+
               <G>
                 {chartCandles.map((candle, i) => {
                   const x = i * candleWidth + candleWidth / 2;
                   const isSelected = selectedCandle?.index === i;
                   const candleColor = isSelected ? '#FFB800' : (candle.positive ? '#00D68F' : '#FF4757');
-                  
+
                   const wickTop = scaleY(candle.high);
                   const wickBottom = scaleY(candle.low);
                   const bodyTop = scaleY(Math.max(candle.open, candle.close));
                   const bodyBottom = scaleY(Math.min(candle.open, candle.close));
                   const bodyHeight = Math.max(bodyBottom - bodyTop, 1);
                   const bodyWidth = candleWidth * 0.6;
-                  
+
                   return (
                     <G key={`candle-${i}`} onPress={() => handleCandlePress(candle, i)}>
                       {/* Invisible touch area for better touch detection */}
@@ -666,7 +790,7 @@ export default function CoinChartScreen({ route, navigation }) {
                 })}
               </G>
             </Svg>
-            
+
             <View style={styles.xAxisLabels}>
               {chartCandles.filter((_, i) => i % Math.ceil(chartCandles.length / 5) === 0).map((candle, i) => (
                 <Text key={i} style={styles.xAxisLabel}>
@@ -675,7 +799,7 @@ export default function CoinChartScreen({ route, navigation }) {
               ))}
             </View>
           </TouchableOpacity>
-          
+
           <View style={styles.yAxisLabels}>
             {yLabels.map((label, i) => (
               <Text key={i} style={styles.yAxisLabel}>
@@ -684,8 +808,8 @@ export default function CoinChartScreen({ route, navigation }) {
             ))}
           </View>
         </View>
-        
-        <TouchableOpacity 
+
+        <TouchableOpacity
           style={styles.refreshIcon}
           onPress={() => {
             setLoading(true);
@@ -709,12 +833,13 @@ export default function CoinChartScreen({ route, navigation }) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0f1419" />
-      
+
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <View style={styles.symbolContainer}>
+          <Text style={styles.segmentHeadingText}>{selectedCategory} - </Text>
           <Text style={styles.symbolText}>{symbol}</Text>
           <Ionicons name="flash" size={16} color="#FFB800" style={styles.flashIcon} />
         </View>
@@ -725,8 +850,8 @@ export default function CoinChartScreen({ route, navigation }) {
 
       {/* Market Segment Tabs */}
       <View style={styles.segmentTabsContainer}>
-        <ScrollView 
-          horizontal 
+        <ScrollView
+          horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.segmentTabsContent}
         >
@@ -759,316 +884,353 @@ export default function CoinChartScreen({ route, navigation }) {
           </Text>
         </View>
 
-      {renderCandlestickChart()}
+        {renderCandlestickChart()}
 
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        style={styles.timeframeScrollView}
-        contentContainerStyle={styles.timeframeContainer}
-      >
-        {timeframes.map((tf, index) => (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.timeframeScrollView}
+          contentContainerStyle={styles.timeframeContainer}
+        >
+          {timeframes.map((tf, index) => (
+            <TouchableOpacity
+              key={`${tf}-${index}`}
+              style={[
+                styles.timeframeButton,
+                selectedTimeframe === tf && index === timeframes.indexOf(selectedTimeframe) && styles.timeframeButtonActive,
+              ]}
+              onPress={() => setSelectedTimeframe(tf)}
+            >
+              <Text style={[
+                styles.timeframeText,
+                selectedTimeframe === tf && index === timeframes.indexOf(selectedTimeframe) && styles.timeframeTextActive,
+              ]}>
+                {tf}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={styles.actionButtons}>
           <TouchableOpacity
-            key={`${tf}-${index}`}
-            style={[
-              styles.timeframeButton,
-              selectedTimeframe === tf && index === timeframes.indexOf(selectedTimeframe) && styles.timeframeButtonActive,
-            ]}
-            onPress={() => setSelectedTimeframe(tf)}
+            style={[styles.actionButton, styles.sellButton]}
+            onPress={() => {
+              setOrderType('SELL');
+              setQuantity('0.49');
+              setOrderModalVisible(true);
+            }}
           >
-            <Text style={[
-              styles.timeframeText,
-              selectedTimeframe === tf && index === timeframes.indexOf(selectedTimeframe) && styles.timeframeTextActive,
-            ]}>
-              {tf}
+            <Text style={styles.actionButtonText}>{t.sell || 'Sell'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.buyButton]}
+            onPress={() => {
+              setOrderType('BUY');
+              setQuantity('0.49');
+              setOrderModalVisible(true);
+            }}
+          >
+            <Text style={styles.actionButtonText}>{t.buy || 'Buy'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.tabsContainer}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'Positions' && styles.tabActive]}
+            onPress={() => setActiveTab('Positions')}
+          >
+            <Text style={[styles.tabText, activeTab === 'Positions' && styles.tabTextActive]}>
+              Positions
             </Text>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      <View style={styles.actionButtons}>
-        <TouchableOpacity 
-          style={[styles.actionButton, styles.sellButton]}
-          onPress={() => {
-            setOrderType('SELL');
-            setQuantity('0.49');
-            setOrderModalVisible(true);
-          }}
-        >
-          <Text style={styles.actionButtonText}>{t.sell || 'Sell'}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.actionButton, styles.buyButton]}
-          onPress={() => {
-            setOrderType('BUY');
-            setQuantity('0.49');
-            setOrderModalVisible(true);
-          }}
-        >
-          <Text style={styles.actionButtonText}>{t.buy || 'Buy'}</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'Positions' && styles.tabActive]}
-          onPress={() => setActiveTab('Positions')}
-        >
-          <Text style={[styles.tabText, activeTab === 'Positions' && styles.tabTextActive]}>
-            Positions
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'Order books' && styles.tabActive]}
-          onPress={() => setActiveTab('Order books')}
-        >
-          <Text style={[styles.tabText, activeTab === 'Order books' && styles.tabTextActive]}>
-            Order books
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'Market watch' && styles.tabActive]}
-          onPress={() => setActiveTab('Market watch')}
-        >
-          <Text style={[styles.tabText, activeTab === 'Market watch' && styles.tabTextActive]}>
-            Market watch
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {activeTab === 'Order books' && (
-        <View style={styles.orderBookContainer}>
-          <View style={styles.orderBookHeader}>
-            <Text style={styles.orderBookHeaderText}>Bid</Text>
-            <Text style={styles.orderBookHeaderText}>Ask</Text>
-          </View>
-          
-          <ScrollView style={styles.orderBookTable} showsVerticalScrollIndicator={false}>
-            {orderBook.map((order, index) => (
-              <View key={index} style={styles.orderBookRow}>
-                <View style={styles.orderBookBidSide}>
-                  <Text style={styles.orderBookPrice}>{formatPrice(parseFloat(order.bid))}</Text>
-                  <View style={styles.bidBarContainer}>
-                    <View style={[styles.bidBar, { width: `${60 + Math.random() * 40}%` }]} />
-                    <Text style={styles.orderBookAmountBid}>{order.bidAmount}</Text>
-                  </View>
-                </View>
-                
-                <View style={styles.orderBookAskSide}>
-                  <Text style={styles.orderBookPrice}>{formatPrice(parseFloat(order.ask))}</Text>
-                  <View style={styles.askBarContainer}>
-                    <View style={[styles.askBar, { width: `${60 + Math.random() * 40}%` }]} />
-                    <Text style={styles.orderBookAmountAsk}>{order.askAmount}</Text>
-                  </View>
-                </View>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-
-      {activeTab === 'Positions' && (
-        <View style={styles.positionsContainer}>
-          {/* Balance/Equity/Free Margin Stats */}
-          <View style={styles.statsContainer}>
-            <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Balance</Text>
-              <Text style={styles.statValue}>${formatPrice(displayBalance)}</Text>
-            </View>
-            <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Equity</Text>
-              <Text style={styles.statValue}>${formatPrice(displayEquity)}</Text>
-            </View>
-            <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Free Margin</Text>
-              <Text style={styles.statValue}>${formatPrice(displayFreeMargin)}</Text>
-            </View>
-          </View>
-
-          {/* Position Filter Tabs */}
-          <View style={styles.positionFilterRow}>
-            <View style={styles.positionFilters}>
-              {['Open', 'Pending', 'Closed'].map((filter) => (
-                <TouchableOpacity
-                  key={filter}
-                  style={[styles.positionFilterBtn, positionFilter === filter && styles.positionFilterBtnActive]}
-                  onPress={() => setPositionFilter(filter)}
-                >
-                  <Text style={[styles.positionFilterText, positionFilter === filter && styles.positionFilterTextActive]}>
-                    {filter}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={styles.totalPnlText}>
-              ${(() => {
-                if (positionFilter === 'Open') {
-                  return Array.isArray(positions) ? positions.reduce((sum, p) => sum + (p.unrealizedPnl || 0), 0).toFixed(2) : '0.00';
-                } else if (positionFilter === 'Pending') {
-                  const pendingOrders = Array.isArray(orders) ? orders.filter(o => o.status === 'PENDING' || o.status === 'OPEN' || o.status === 'PARTIALLY_FILLED') : [];
-                  return pendingOrders.reduce((sum, o) => sum + ((o.quantity || 0) * (o.price || 0)), 0).toFixed(2);
-                } else {
-                  const closedOrders = Array.isArray(orders) ? orders.filter(o => o.status === 'FILLED' || o.status === 'CANCELLED' || o.status === 'REJECTED') : [];
-                  const allClosed = [...(Array.isArray(closedPositions) ? closedPositions : []), ...closedOrders];
-                  return allClosed.reduce((sum, p) => sum + (p.realizedPnl || p.pnl || 0), 0).toFixed(2);
-                }
-              })()}
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'Order books' && styles.tabActive]}
+            onPress={() => setActiveTab('Order books')}
+          >
+            <Text style={[styles.tabText, activeTab === 'Order books' && styles.tabTextActive]}>
+              Order books
             </Text>
-          </View>
-          
-          {/* Positions List - Open */}
-          <ScrollView style={styles.positionsList} showsVerticalScrollIndicator={false}>
-            {positionFilter === 'Open' && (
-              <>
-                {!Array.isArray(positions) || positions.length === 0 ? (
-                  <View style={styles.emptyPositionsContainer}>
-                    <Ionicons name="layers-outline" size={48} color="#8F92A1" />
-                    <Text style={styles.emptyPositionsText}>No open positions</Text>
-                  </View>
-                ) : (
-                  positions.map((position) => {
-                    const pnl = position.unrealizedPnl || 
-                      (position.side === 'BUY' 
-                        ? (currentPrice - (position.avgPrice || position.entryPrice)) * position.quantity
-                        : ((position.avgPrice || position.entryPrice) - currentPrice) * position.quantity);
-                    const isProfit = pnl >= 0;
-                    
-                    return (
-                      <View key={position.id} style={styles.positionItem}>
-                        <View style={styles.positionItemLeft}>
-                          <View style={styles.positionIconCircle}>
-                            <Ionicons 
-                              name={position.side === 'BUY' ? 'trending-up' : 'trending-down'} 
-                              size={16} 
-                              color={position.side === 'BUY' ? '#00D68F' : '#FF4757'} 
-                            />
-                          </View>
-                          <View>
-                            <Text style={styles.positionItemSymbol}>{position.instrument?.symbol || position.symbol || 'Unknown'}</Text>
-                            <Text style={styles.positionItemDetails}>
-                              {position.side} {position.quantity} at {formatPrice(position.avgPrice || position.entryPrice)}
-                            </Text>
-                          </View>
-                        </View>
-                        <Text style={[styles.positionItemPnl, !isProfit && styles.lossText]}>
-                          ${formatPrice(Math.abs(pnl))}
-                        </Text>
-                      </View>
-                    );
-                  })
-                )}
-              </>
-            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'Market watch' && styles.tabActive]}
+            onPress={() => setActiveTab('Market watch')}
+          >
+            <Text style={[styles.tabText, activeTab === 'Market watch' && styles.tabTextActive]}>
+              Market watch
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-            {/* Pending Orders */}
-            {positionFilter === 'Pending' && (
-              <>
-                {(() => {
-                  const pendingOrders = orders.filter(o => o.status === 'PENDING' || o.status === 'OPEN' || o.status === 'PARTIALLY_FILLED');
-                  if (pendingOrders.length === 0) {
-                    return (
-                      <View style={styles.emptyPositionsContainer}>
-                        <Ionicons name="time-outline" size={48} color="#8F92A1" />
-                        <Text style={styles.emptyPositionsText}>No pending orders</Text>
-                      </View>
-                    );
+        {activeTab === 'Order books' && (
+          <View style={styles.orderBookContainer}>
+            <View style={styles.orderBookHeader}>
+              <Text style={styles.orderBookHeaderText}>Bid</Text>
+              <Text style={styles.orderBookHeaderText}>Ask</Text>
+            </View>
+
+            <ScrollView style={styles.orderBookTable} showsVerticalScrollIndicator={false}>
+              {orderBook.map((order, index) => (
+                <View key={index} style={styles.orderBookRow}>
+                  <View style={styles.orderBookBidSide}>
+                    <Text style={styles.orderBookPrice}>{formatPrice(parseFloat(order.bid))}</Text>
+                    <View style={styles.bidBarContainer}>
+                      <View style={[styles.bidBar, { width: `${60 + Math.random() * 40}%` }]} />
+                      <Text style={styles.orderBookAmountBid}>{order.bidAmount}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.orderBookAskSide}>
+                    <Text style={styles.orderBookPrice}>{formatPrice(parseFloat(order.ask))}</Text>
+                    <View style={styles.askBarContainer}>
+                      <View style={[styles.askBar, { width: `${60 + Math.random() * 40}%` }]} />
+                      <Text style={styles.orderBookAmountAsk}>{order.askAmount}</Text>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {activeTab === 'Positions' && (
+          <View style={styles.positionsContainer}>
+            {/* Balance/Equity/Free Margin Stats */}
+            <View style={styles.statsContainer}>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>Balance</Text>
+                <Text style={styles.statValue}>${formatPrice(displayBalance)}</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>Equity</Text>
+                <Text style={styles.statValue}>${formatPrice(displayEquity)}</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statLabel}>Free Margin</Text>
+                <Text style={styles.statValue}>${formatPrice(displayFreeMargin)}</Text>
+              </View>
+            </View>
+
+            {/* Position Filter Tabs */}
+            <View style={styles.positionFilterRow}>
+              <View style={styles.positionFilters}>
+                {['Open', 'Pending', 'Closed'].map((filter) => (
+                  <TouchableOpacity
+                    key={filter}
+                    style={[styles.positionFilterBtn, positionFilter === filter && styles.positionFilterBtnActive]}
+                    onPress={() => setPositionFilter(filter)}
+                  >
+                    <Text style={[styles.positionFilterText, positionFilter === filter && styles.positionFilterTextActive]}>
+                      {filter}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.totalPnlText}>
+                ${(() => {
+                  if (positionFilter === 'Open') {
+                    return Array.isArray(positions) ? positions.reduce((sum, p) => sum + (p.unrealizedPnl || 0), 0).toFixed(2) : '0.00';
+                  } else if (positionFilter === 'Pending') {
+                    const pendingOrders = Array.isArray(orders) ? orders.filter(o => o.status === 'PENDING' || o.status === 'OPEN' || o.status === 'PARTIALLY_FILLED') : [];
+                    return pendingOrders.reduce((sum, o) => sum + ((o.quantity || 0) * (o.price || 0)), 0).toFixed(2);
+                  } else {
+                    const closedOrders = Array.isArray(orders) ? orders.filter(o => o.status === 'FILLED' || o.status === 'CANCELLED' || o.status === 'REJECTED') : [];
+                    const allClosed = [...(Array.isArray(closedPositions) ? closedPositions : []), ...closedOrders];
+                    return allClosed.reduce((sum, p) => sum + (p.realizedPnl || p.pnl || 0), 0).toFixed(2);
                   }
-                  return pendingOrders.map((order) => (
-                    <View key={order.id} style={styles.positionItem}>
-                      <View style={styles.positionItemLeft}>
-                        <View style={styles.positionIconCircle}>
-                          <Ionicons name="time" size={16} color="#FFB800" />
-                        </View>
-                        <View>
-                          <Text style={styles.positionItemSymbol}>{order.instrument?.symbol || order.symbol || 'Unknown'}</Text>
-                          <Text style={styles.positionItemDetails}>
-                            {order.side} {order.quantity} at {formatPrice(order.price)}
+                })()}
+              </Text>
+            </View>
+
+            {/* Positions List - Open */}
+            <ScrollView style={styles.positionsList} showsVerticalScrollIndicator={false}>
+              {positionFilter === 'Open' && (
+                <>
+                  {!Array.isArray(positions) || positions.length === 0 ? (
+                    <View style={styles.emptyPositionsContainer}>
+                      <Ionicons name="layers-outline" size={48} color="#8F92A1" />
+                      <Text style={styles.emptyPositionsText}>No open positions</Text>
+                    </View>
+                  ) : (
+                    positions.map((position) => {
+                      const pnl = position.unrealizedPnl ||
+                        (position.side === 'BUY'
+                          ? (currentPrice - (position.avgPrice || position.entryPrice)) * position.quantity
+                          : ((position.avgPrice || position.entryPrice) - currentPrice) * position.quantity);
+                      const isProfit = pnl >= 0;
+
+                      return (
+                        <View key={position.id} style={styles.positionItem}>
+                          <View style={styles.positionItemLeft}>
+                            <View style={styles.positionIconCircle}>
+                              <Ionicons
+                                name={position.side === 'BUY' ? 'trending-up' : 'trending-down'}
+                                size={16}
+                                color={position.side === 'BUY' ? '#00D68F' : '#FF4757'}
+                              />
+                            </View>
+                            <View>
+                              <Text style={styles.positionItemSymbol}>{position.instrument?.symbol || position.symbol || 'Unknown'}</Text>
+                              <Text style={styles.positionItemDetails}>
+                                {position.side} {position.quantity} at {formatPrice(position.avgPrice || position.entryPrice)}
+                              </Text>
+                            </View>
+                          </View>
+                          <Text style={[styles.positionItemPnl, !isProfit && styles.lossText]}>
+                            ${formatPrice(Math.abs(pnl))}
                           </Text>
                         </View>
-                      </View>
-                      <View style={styles.orderStatusRight}>
-                        <Text style={styles.orderStatusText}>{order.status}</Text>
-                        <Text style={styles.orderDateText}>{new Date(order.createdAt).toLocaleDateString()}</Text>
-                      </View>
-                    </View>
-                  ));
-                })()}
-              </>
-            )}
+                      );
+                    })
+                  )}
+                </>
+              )}
 
-            {/* Closed Positions */}
-            {positionFilter === 'Closed' && (
-              <>
-                {(() => {
-                  const closedOrders = orders.filter(o => o.status === 'FILLED' || o.status === 'CANCELLED' || o.status === 'REJECTED');
-                  const allClosed = [...closedPositions, ...closedOrders];
-                  
-                  if (allClosed.length === 0) {
-                    return (
-                      <View style={styles.emptyPositionsContainer}>
-                        <Ionicons name="checkmark-circle-outline" size={48} color="#8F92A1" />
-                        <Text style={styles.emptyPositionsText}>No closed positions</Text>
-                      </View>
-                    );
-                  }
-                  return allClosed.map((item, index) => {
-                    const pnl = item.realizedPnl || item.pnl || 0;
-                    const isProfit = pnl >= 0;
-                    
-                    return (
-                      <View key={item.id || `closed-${index}`} style={styles.positionItem}>
+              {/* Pending Orders */}
+              {positionFilter === 'Pending' && (
+                <>
+                  {(() => {
+                    const pendingOrders = orders.filter(o => o.status === 'PENDING' || o.status === 'OPEN' || o.status === 'PARTIALLY_FILLED');
+                    if (pendingOrders.length === 0) {
+                      return (
+                        <View style={styles.emptyPositionsContainer}>
+                          <Ionicons name="time-outline" size={48} color="#8F92A1" />
+                          <Text style={styles.emptyPositionsText}>No pending orders</Text>
+                        </View>
+                      );
+                    }
+                    return pendingOrders.map((order) => (
+                      <View key={order.id} style={styles.positionItem}>
                         <View style={styles.positionItemLeft}>
                           <View style={styles.positionIconCircle}>
-                            <Ionicons 
-                              name="checkmark-circle" 
-                              size={16} 
-                              color={isProfit ? '#00D68F' : '#FF4757'} 
-                            />
+                            <Ionicons name="time" size={16} color="#FFB800" />
                           </View>
                           <View>
-                            <Text style={styles.positionItemSymbol}>{item.instrument?.symbol || item.symbol || 'Unknown'}</Text>
+                            <Text style={styles.positionItemSymbol}>{order.instrument?.symbol || order.symbol || 'Unknown'}</Text>
                             <Text style={styles.positionItemDetails}>
-                              {item.side} {item.quantity} at {formatPrice(item.avgPrice || item.price)}
+                              {order.side} {order.quantity} at {formatPrice(order.price)}
                             </Text>
                           </View>
                         </View>
                         <View style={styles.orderStatusRight}>
-                          <Text style={[styles.positionItemPnl, !isProfit && styles.lossText]}>
-                            ${formatPrice(Math.abs(pnl))}
-                          </Text>
-                          <Text style={styles.orderDateText}>{item.status || 'CLOSED'}</Text>
+                          <Text style={styles.orderStatusText}>{order.status}</Text>
+                          <Text style={styles.orderDateText}>{new Date(order.createdAt).toLocaleDateString()}</Text>
                         </View>
                       </View>
-                    );
-                  });
-                })()}
-              </>
-            )}
-          </ScrollView>
-        </View>
-      )}
+                    ));
+                  })()}
+                </>
+              )}
 
-      {/* Market Watch Tab */}
-      {activeTab === 'Market watch' && (
-        <View style={styles.marketWatchContainer}>
-          <ScrollView style={styles.marketWatchList} showsVerticalScrollIndicator={false}>
-            {marketWatchData.map((item, index) => {
+              {/* Closed Positions */}
+              {positionFilter === 'Closed' && (
+                <>
+                  {(() => {
+                    const closedOrders = orders.filter(o => o.status === 'FILLED' || o.status === 'CANCELLED' || o.status === 'REJECTED');
+                    const allClosed = [...closedPositions, ...closedOrders];
+
+                    if (allClosed.length === 0) {
+                      return (
+                        <View style={styles.emptyPositionsContainer}>
+                          <Ionicons name="checkmark-circle-outline" size={48} color="#8F92A1" />
+                          <Text style={styles.emptyPositionsText}>No closed positions</Text>
+                        </View>
+                      );
+                    }
+                    return allClosed.map((item, index) => {
+                      const pnl = item.realizedPnl || item.pnl || 0;
+                      const isProfit = pnl >= 0;
+
+                      return (
+                        <View key={item.id || `closed-${index}`} style={styles.positionItem}>
+                          <View style={styles.positionItemLeft}>
+                            <View style={styles.positionIconCircle}>
+                              <Ionicons
+                                name="checkmark-circle"
+                                size={16}
+                                color={isProfit ? '#00D68F' : '#FF4757'}
+                              />
+                            </View>
+                            <View>
+                              <Text style={styles.positionItemSymbol}>{item.instrument?.symbol || item.symbol || 'Unknown'}</Text>
+                              <Text style={styles.positionItemDetails}>
+                                {item.side} {item.quantity} at {formatPrice(item.avgPrice || item.price)}
+                              </Text>
+                            </View>
+                          </View>
+                          <View style={styles.orderStatusRight}>
+                            <Text style={[styles.positionItemPnl, !isProfit && styles.lossText]}>
+                              ${formatPrice(Math.abs(pnl))}
+                            </Text>
+                            <Text style={styles.orderDateText}>{item.status || 'CLOSED'}</Text>
+                          </View>
+                        </View>
+                      );
+                    });
+                  })()}
+                </>
+              )}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Market Watch Tab */}
+        {activeTab === 'Market watch' && (
+          <View style={styles.marketWatchContainer}>
+            <ScrollView style={styles.marketWatchList} showsVerticalScrollIndicator={false}>
+              {marketWatchData.map((item, index) => {
                 const price = item.currentPrice?.ltp || item.ltp || 0;
                 const change = item.currentPrice?.changePercent || item.changePercent || 0;
                 const isPositive = change >= 0;
-                
+
                 return (
-                  <TouchableOpacity 
-                    key={item.instrumentId || index} 
+                  <TouchableOpacity
+                    key={item.instrumentId || index}
                     style={styles.marketWatchItem}
-                    onPress={() => setSearchModalVisible(true)}
+                    onPress={() => {
+                      navigation.replace('CoinChart', {
+                        symbol: item.symbol,
+                        instrumentId: item.instrumentId || item.id,
+                        isLoggedIn: isLoggedIn,
+                      });
+                    }}
                   >
                     <View style={styles.marketWatchLeft}>
                       <Text style={styles.marketWatchSymbol}>{item.symbol}</Text>
                       <Text style={styles.marketWatchSubtext}>
-                        Option . {formatPrice(price)} USDT
+                        {selectedCategory} . {formatPrice(price)}
                       </Text>
                     </View>
+
+                    {/* Sparkline "Market Candle" workaround */}
+                    <View style={styles.sparklineContainer}>
+                      <Svg width={60} height={30}>
+                        <Line
+                          x1="0" y1={15 + (Math.random() - 0.5) * 20}
+                          x2="15" y2={15 + (Math.random() - 0.5) * 20}
+                          stroke={isPositive ? '#00D68F' : '#FF4757'}
+                          strokeWidth="2"
+                        />
+                        <Line
+                          x1="15" y1={15 + (Math.random() - 0.5) * 20}
+                          x2="30" y2={15 + (Math.random() - 0.5) * 20}
+                          stroke={isPositive ? '#00D68F' : '#FF4757'}
+                          strokeWidth="2"
+                        />
+                        <Line
+                          x1="30" y1={15 + (Math.random() - 0.5) * 20}
+                          x2="45" y2={15 + (Math.random() - 0.5) * 20}
+                          stroke={isPositive ? '#00D68F' : '#FF4757'}
+                          strokeWidth="2"
+                        />
+                        <Line
+                          x1="45" y1={15 + (Math.random() - 0.5) * 20}
+                          x2="60" y2={15 + (Math.random() - 0.5) * 20}
+                          stroke={isPositive ? '#00D68F' : '#FF4757'}
+                          strokeWidth="2"
+                        />
+                      </Svg>
+                    </View>
+
                     <View style={styles.marketWatchRight}>
                       <Text style={styles.marketWatchPrice}>{formatPrice(price)}</Text>
                       <Text style={styles.marketWatchSubPrice}>${formatPrice(price * 0.005)}</Text>
@@ -1081,9 +1243,9 @@ export default function CoinChartScreen({ route, navigation }) {
                   </TouchableOpacity>
                 );
               })}
-          </ScrollView>
-        </View>
-      )}
+            </ScrollView>
+          </View>
+        )}
       </ScrollView>
 
       {/* Create Order Modal - New Design */}
@@ -1093,7 +1255,7 @@ export default function CoinChartScreen({ route, navigation }) {
         animationType="slide"
         onRequestClose={() => setOrderModalVisible(false)}
       >
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
           onPress={() => setOrderModalVisible(false)}
@@ -1101,7 +1263,7 @@ export default function CoinChartScreen({ route, navigation }) {
           <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
             {/* Drag Handle */}
             <View style={styles.dragHandle} />
-            
+
             {/* Title and Balance */}
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Create order</Text>
@@ -1110,10 +1272,10 @@ export default function CoinChartScreen({ route, navigation }) {
                 <Text style={styles.modalBalanceValue}>${formatPrice(displayAvailableMargin)}</Text>
               </View>
             </View>
-            
+
             {/* Dropdowns Row */}
             <View style={styles.dropdownRow}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.dropdown}
                 onPress={() => setOrderTypeDropdownVisible(true)}
               >
@@ -1122,7 +1284,7 @@ export default function CoinChartScreen({ route, navigation }) {
                 </Text>
                 <Ionicons name="chevron-down" size={16} color="#8F92A1" />
               </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.dropdown}
                 onPress={() => setInstrumentDropdownVisible(true)}
               >
@@ -1132,13 +1294,13 @@ export default function CoinChartScreen({ route, navigation }) {
                 <Ionicons name="chevron-down" size={16} color="#8F92A1" />
               </TouchableOpacity>
             </View>
-            
+
             {/* Bid/Ask Prices */}
             <View style={styles.pricesRow}>
               <Text style={styles.bidPriceText}>{bidPrice}°</Text>
               <Text style={styles.askPriceText}>{askPrice}°</Text>
             </View>
-            
+
             {/* Lot Size Adjusters */}
             <View style={styles.lotSizeRow}>
               <TouchableOpacity style={styles.lotButton} onPress={() => adjustQuantity(-0.5)}>
@@ -1163,7 +1325,7 @@ export default function CoinChartScreen({ route, navigation }) {
                 <Text style={styles.lotButtonTextGreen}>+0.5</Text>
               </TouchableOpacity>
             </View>
-            
+
             {/* SL and TP Controls */}
             <View style={styles.slTpRow}>
               <View style={styles.slTpContainer}>
@@ -1178,7 +1340,7 @@ export default function CoinChartScreen({ route, navigation }) {
                   <Ionicons name="add" size={20} color="#8F92A1" />
                 </TouchableOpacity>
               </View>
-              
+
               <View style={styles.slTpContainer}>
                 <TouchableOpacity style={styles.slTpButton} onPress={() => setTakeProfit(Math.max(0, takeProfit - 1))}>
                   <Ionicons name="remove" size={20} color="#8F92A1" />
@@ -1192,11 +1354,11 @@ export default function CoinChartScreen({ route, navigation }) {
                 </TouchableOpacity>
               </View>
             </View>
-            
+
             {/* Action Buttons - Both Buy and Sell */}
             {isLoggedIn ? (
               <View style={styles.orderActionButtonsRow}>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[styles.orderActionButtonHalf, styles.sellActionButton, orderLoading && styles.disabledButton]}
                   onPress={() => executeTrade('SELL')}
                   disabled={orderLoading}
@@ -1208,7 +1370,7 @@ export default function CoinChartScreen({ route, navigation }) {
                     <Text style={styles.orderActionButtonText}>Sell</Text>
                   )}
                 </TouchableOpacity>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[styles.orderActionButtonHalf, styles.buyActionButton, orderLoading && styles.disabledButton]}
                   onPress={() => executeTrade('BUY')}
                   disabled={orderLoading}
@@ -1222,7 +1384,7 @@ export default function CoinChartScreen({ route, navigation }) {
                 </TouchableOpacity>
               </View>
             ) : (
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.signInButton}
                 onPress={() => {
                   setOrderModalVisible(false);
@@ -1243,17 +1405,17 @@ export default function CoinChartScreen({ route, navigation }) {
         animationType="fade"
         onRequestClose={() => setSuccessModalVisible(false)}
       >
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.successOverlay}
           activeOpacity={1}
           onPress={() => setSuccessModalVisible(false)}
         >
           <Animated.View style={[styles.successContent, { opacity: successAnim }]}>
             <View style={styles.successIcon}>
-              <Ionicons 
-                name="checkmark-circle" 
-                size={64} 
-                color={orderResult?.type === 'BUY' ? '#00D68F' : '#FF4757'} 
+              <Ionicons
+                name="checkmark-circle"
+                size={64}
+                color={orderResult?.type === 'BUY' ? '#00D68F' : '#FF4757'}
               />
             </View>
             <Text style={styles.successTitle}>{t.success || 'Order Executed!'}</Text>
@@ -1278,7 +1440,7 @@ export default function CoinChartScreen({ route, navigation }) {
                 </Text>
               </View>
             )}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.successDismiss}
               onPress={() => setSuccessModalVisible(false)}
             >
@@ -1295,7 +1457,7 @@ export default function CoinChartScreen({ route, navigation }) {
         animationType="fade"
         onRequestClose={() => setOrderTypeDropdownVisible(false)}
       >
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.dropdownOverlay}
           activeOpacity={1}
           onPress={() => setOrderTypeDropdownVisible(false)}
@@ -1343,7 +1505,7 @@ export default function CoinChartScreen({ route, navigation }) {
         animationType="slide"
         onRequestClose={() => setInstrumentDropdownVisible(false)}
       >
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.dropdownOverlay}
           activeOpacity={1}
           onPress={() => setInstrumentDropdownVisible(false)}
@@ -1360,14 +1522,14 @@ export default function CoinChartScreen({ route, navigation }) {
                 const price = instrument.price || instrument.lastPrice || 0;
                 const change = instrument.change || instrument.changePercent || 0;
                 const isPositive = change >= 0;
-                
+
                 return (
                   <TouchableOpacity
                     key={instrument.id || index}
                     style={[
                       styles.instrumentDropdownItem,
-                      (selectedInstrument?.symbol === instrument.symbol || 
-                       (!selectedInstrument && symbol === instrument.symbol)) && 
+                      (selectedInstrument?.symbol === instrument.symbol ||
+                        (!selectedInstrument && symbol === instrument.symbol)) &&
                       styles.instrumentDropdownItemSelected
                     ]}
                     onPress={() => {
@@ -1403,8 +1565,8 @@ export default function CoinChartScreen({ route, navigation }) {
       </Modal>
 
       {/* Search Coin Modal */}
-      <SearchCoinModal 
-        visible={searchModalVisible} 
+      <SearchCoinModal
+        visible={searchModalVisible}
         onClose={() => setSearchModalVisible(false)}
         onSelect={(item) => {
           navigation.replace('CoinChart', {
@@ -1453,6 +1615,13 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
   },
+  segmentHeadingText: {
+    color: '#8F92A1',
+    fontSize: 14,
+    fontWeight: '500',
+    alignSelf: 'flex-end',
+    marginBottom: 2,
+  },
   flashIcon: {
     marginLeft: 6,
   },
@@ -1495,6 +1664,14 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
     marginBottom: 8,
     position: 'relative',
+  },
+  chartLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 20, 25, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 20,
+    borderRadius: 8,
   },
   candleInfoOverlay: {
     position: 'absolute',
@@ -2074,7 +2251,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  
+
   // New Positions Tab Styles
   statsContainer: {
     backgroundColor: '#252838',
@@ -2193,7 +2370,7 @@ const styles = StyleSheet.create({
     color: '#8F92A1',
     fontSize: 11,
   },
-  
+
   // Market Watch Styles
   marketWatchContainer: {
     flex: 1,
@@ -2264,6 +2441,13 @@ const styles = StyleSheet.create({
   negativeChange: {
     backgroundColor: 'rgba(255, 71, 87, 0.2)',
   },
+  sparklineContainer: {
+    width: 60,
+    height: 30,
+    marginHorizontal: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   marketWatchChangeText: {
     fontSize: 12,
     fontWeight: '600',
@@ -2274,7 +2458,7 @@ const styles = StyleSheet.create({
   negativeText: {
     color: '#FF4757',
   },
-  
+
   // Search Modal Styles
   searchModalOverlay: {
     flex: 1,

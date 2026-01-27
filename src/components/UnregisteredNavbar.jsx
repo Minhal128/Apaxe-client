@@ -3,10 +3,12 @@ import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../constants/colors';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export default function UnregisteredNavbar({ navigation, activeScreen = 'home' }) {
   const insets = useSafeAreaInsets();
-  
+  const { t } = useLanguage();
+
   // Safe navigation to home - handles both auth and unauth stacks
   const navigateToHome = () => {
     try {
@@ -17,84 +19,104 @@ export default function UnregisteredNavbar({ navigation, activeScreen = 'home' }
       navigation.navigate('Home');
     }
   };
-  
+
   return (
     <View style={[styles.bottomNavbar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-      <TouchableOpacity 
+      {/* Home */}
+      <TouchableOpacity
         style={styles.navItem}
         onPress={navigateToHome}
       >
-        <Ionicons 
-          name="home" 
-          size={24} 
-          color={activeScreen === 'home' ? colors.textPrimary : colors.textSecondary} 
+        <Ionicons
+          name="home-outline"
+          size={24}
+          color={activeScreen === 'home' ? colors.textPrimary : colors.textSecondary}
         />
         <Text style={[
-          styles.navLabel, 
+          styles.navLabel,
           { color: activeScreen === 'home' ? colors.textPrimary : colors.textSecondary }
         ]}>
-          Home
+          {t.home}
         </Text>
       </TouchableOpacity>
-      
-      <TouchableOpacity 
+
+      {/* Trade */}
+      <TouchableOpacity
         style={styles.navItem}
         onPress={() => {
-          // Navigate to TradeOriginal without resetting the stack
           navigation.navigate('TradeOriginal', { isLoggedIn: false });
         }}
       >
-        <Ionicons 
-          name="bar-chart" 
-          size={24} 
-          color={activeScreen === 'Trade' || activeScreen === 'TradeOriginal' ? colors.textPrimary : colors.textSecondary} 
+        <Ionicons
+          name="bar-chart-outline"
+          size={24}
+          color={activeScreen === 'Trade' || activeScreen === 'TradeOriginal' ? colors.textPrimary : colors.textSecondary}
         />
         <Text style={[
-          styles.navLabel, 
+          styles.navLabel,
           { color: activeScreen === 'Trade' || activeScreen === 'TradeOriginal' ? colors.textPrimary : colors.textSecondary }
         ]}>
-          Trade
+          {t.trade}
         </Text>
       </TouchableOpacity>
-      
-      <TouchableOpacity 
-        style={styles.walletButton}
-        onPress={() => navigation.navigate('Wallet')}
+
+      {/* Market */}
+      <TouchableOpacity
+        style={styles.navItem}
+        onPress={() => navigation.navigate('MarketWatch', { isLoggedIn: false })}
       >
-        <Ionicons name="wallet" size={28} color={colors.textPrimary} />
+        <TouchableOpacity
+          style={styles.walletIconContainer}
+          onPress={() => navigation.navigate('Wallet')}
+        >
+          <Ionicons name="wallet" size={24} color={colors.textPrimary} />
+        </TouchableOpacity>
+        <Ionicons
+          name="analytics-outline"
+          size={24}
+          color={activeScreen === 'Watchlist' || activeScreen === 'MarketWatch' ? colors.textPrimary : colors.textSecondary}
+        />
+        <Text style={[
+          styles.navLabel,
+          { color: activeScreen === 'Watchlist' || activeScreen === 'MarketWatch' ? colors.textPrimary : colors.textSecondary }
+        ]}>
+          {t.market}
+        </Text>
       </TouchableOpacity>
-      
-      <TouchableOpacity 
+
+      {/* Position */}
+      <TouchableOpacity
         style={styles.navItem}
         onPress={() => navigation.navigate('Position')}
       >
-        <Ionicons 
-          name="grid" 
-          size={24} 
-          color={activeScreen === 'Position' ? colors.textPrimary : colors.textSecondary} 
+        <Ionicons
+          name="grid-outline"
+          size={24}
+          color={activeScreen === 'Position' ? colors.textPrimary : colors.textSecondary}
         />
         <Text style={[
-          styles.navLabel, 
+          styles.navLabel,
           { color: activeScreen === 'Position' ? colors.textPrimary : colors.textSecondary }
         ]}>
-          Position
+          {t.position}
         </Text>
       </TouchableOpacity>
-      
-      <TouchableOpacity 
+
+      {/* Profile */}
+      <TouchableOpacity
         style={styles.navItem}
         onPress={() => navigation.navigate('Profile')}
       >
-        <Ionicons 
-          name="person" 
-          size={24} 
-          color={activeScreen === 'Profile' ? colors.textPrimary : colors.textSecondary} 
+        <Ionicons
+          name="person-outline"
+          size={24}
+          color={activeScreen === 'Profile' ? colors.textPrimary : colors.textSecondary}
         />
         <Text style={[
-          styles.navLabel, 
+          styles.navLabel,
           { color: activeScreen === 'Profile' ? colors.textPrimary : colors.textSecondary }
         ]}>
-          Profile
+          {t.profile}
         </Text>
       </TouchableOpacity>
     </View>
@@ -114,25 +136,27 @@ const styles = StyleSheet.create({
   navItem: {
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
+    width: '20%',
   },
   navLabel: {
-    fontSize: 11,
+    fontSize: 10,
     marginTop: 4,
     fontWeight: '500',
   },
-  walletButton: {
+  walletIconContainer: {
+    position: 'absolute',
+    top: -70,
     width: 56,
     height: 56,
     borderRadius: 28,
     backgroundColor: colors.green,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: -20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 5,
+    zIndex: 10,
   },
 });

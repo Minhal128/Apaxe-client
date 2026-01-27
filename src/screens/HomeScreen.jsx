@@ -42,7 +42,7 @@ export default function HomeScreen({ navigation }) {
       // Handle nested response: { data: { segments: [...] } }
       const segmentsList = segmentsRes?.data?.segments || segmentsRes?.segments || [];
       setSegments(segmentsList);
-      
+
       // Trigger instruments fetch after segments are loaded
       if (selectedSegment) {
         setTimeout(() => fetchInstruments(), 100);
@@ -58,7 +58,7 @@ export default function HomeScreen({ navigation }) {
       setError(null);
       setHasApiError(false);
       console.log('Fetching instruments for segment:', selectedSegment);
-      
+
       // Map UI segment names to segment IDs for filtering
       const segmentIdMap = {
         'MCX2': '6946a6bb2056b8e4a5319327',
@@ -67,18 +67,18 @@ export default function HomeScreen({ navigation }) {
         'Equity': 'NSE',
         'Commodity': 'MCX'
       };
-      
+
       const segmentId = segmentIdMap[selectedSegment];
       console.log('Segment ID:', segmentId);
-      
+
       // Fetch instruments directly from /instruments endpoint (more reliable)
       const params = segmentId ? { segment: segmentId } : {};
       const res = await instrumentService.getInstruments(params);
       console.log('Instruments response:', res);
-      
+
       // The response structure is { success: true, data: [...], meta: {...} }
       const instrumentsData = res?.data || [];
-      
+
       // Transform instrument data to match expected format
       const transformedData = instrumentsData.map(item => ({
         id: item.id,
@@ -90,13 +90,13 @@ export default function HomeScreen({ navigation }) {
         volume: item.volume || 0,
         segment: item.segment?.name || selectedSegment
       }));
-      
+
       setInstruments(transformedData);
-      
+
       if (transformedData.length > 0) {
         console.log(`✅ Loaded ${transformedData.length} instruments`);
       }
-      
+
     } catch (err) {
       console.log('Error fetching instruments:', err.message);
       setError('Unable to load market data. Please check your connection.');
@@ -107,13 +107,13 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  const filteredInstruments = instruments.filter(i => 
+  const filteredInstruments = instruments.filter(i =>
     !searchQuery || i.symbol?.toLowerCase().includes(searchQuery.toLowerCase())
   );
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-      
+
       {/* Logo/Illustration */}
       <View style={styles.logoContainer}>
         <View style={styles.logoPlaceholder}>
@@ -128,7 +128,7 @@ export default function HomeScreen({ navigation }) {
         <Text style={styles.headerTitle}>
           Experience Real-Time Trading{'\n'}Video, without the Risk.
         </Text>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.signInButton}
           onPress={() => navigation.navigate('Login')}
         >
@@ -153,7 +153,7 @@ export default function HomeScreen({ navigation }) {
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View style={styles.positionFilters}>
             {['Crypto', 'MCX2', 'Forex', 'NSE', 'Equity', 'Commodity'].map((seg) => (
-              <TouchableOpacity 
+              <TouchableOpacity
                 key={seg}
                 style={[styles.filterButton, selectedSegment === seg && styles.filterButtonActive]}
                 onPress={() => setSelectedSegment(seg)}
@@ -210,8 +210,8 @@ export default function HomeScreen({ navigation }) {
             <Ionicons name="bar-chart-outline" size={48} color={colors.textSecondary} />
             <Text style={styles.noDataText}>No instruments available</Text>
             <Text style={styles.noDataSubText}>
-              {selectedSegment === 'MCX2' 
-                ? 'MCX2 instruments are being loaded...' 
+              {selectedSegment === 'MCX2'
+                ? 'MCX2 instruments are being loaded...'
                 : `No ${selectedSegment} instruments found in the database`}
             </Text>
           </View>
@@ -224,31 +224,38 @@ export default function HomeScreen({ navigation }) {
           <Ionicons name="home" size={24} color={colors.textPrimary} />
           <Text style={styles.navLabel}>Home</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.navItem}
           onPress={() => navigation.navigate('TradeOriginal', { isLoggedIn: false })}
         >
-          <Ionicons name="bar-chart" size={24} color={colors.textSecondary} />
+          <Ionicons name="bar-chart-outline" size={24} color={colors.textSecondary} />
           <Text style={[styles.navLabel, { color: colors.textSecondary }]}>Trade</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.walletButton}
-          onPress={() => navigation.navigate('Wallet')}
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={() => navigation.navigate('MarketWatch', { isLoggedIn: false })}
         >
-          <Ionicons name="wallet" size={28} color={colors.textPrimary} />
+          <TouchableOpacity
+            style={styles.walletIconContainer}
+            onPress={() => navigation.navigate('Wallet')}
+          >
+            <Ionicons name="wallet" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Ionicons name="analytics-outline" size={24} color={colors.textSecondary} />
+          <Text style={[styles.navLabel, { color: colors.textSecondary }]}>Market</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.navItem}
           onPress={() => navigation.navigate('Position')}
         >
-          <Ionicons name="grid" size={24} color={colors.textSecondary} />
-          <Text style={[styles.navLabel, { color: colors.textSecondary }]}>More</Text>
+          <Ionicons name="grid-outline" size={24} color={colors.textSecondary} />
+          <Text style={[styles.navLabel, { color: colors.textSecondary }]}>Position</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.navItem}
           onPress={() => navigation.navigate('Profile')}
         >
-          <Ionicons name="person" size={24} color={colors.textSecondary} />
+          <Ionicons name="person-outline" size={24} color={colors.textSecondary} />
           <Text style={[styles.navLabel, { color: colors.textSecondary }]}>Profile</Text>
         </TouchableOpacity>
       </View>
@@ -452,7 +459,7 @@ const styles = StyleSheet.create({
   navItem: {
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
+    width: '20%',
   },
   navLabel: {
     fontSize: 11,
@@ -460,19 +467,21 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontWeight: '500',
   },
-  walletButton: {
+  walletIconContainer: {
+    position: 'absolute',
+    top: -70,
     width: 56,
     height: 56,
     borderRadius: 28,
     backgroundColor: colors.green,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: -20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 5,
+    zIndex: 10,
   },
   loadingContainer: {
     flex: 1,

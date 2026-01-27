@@ -44,6 +44,7 @@ import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
 import RateUsScreen from '../screens/RateUsScreen';
 import TradeOriginalScreen from '../screens/TradeOriginalScreen';
 import CoinChartScreen from '../screens/CoinChartScreen';
+import MarketWatchScreen from '../screens/MarketWatchScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -160,29 +161,33 @@ export default function AppNavigator() {
               name="SetNewPassword"
               component={SetNewPasswordScreen}
             />
-            <Stack.Screen 
-              name="CoinChart" 
-              component={CoinChartScreen} 
+            <Stack.Screen
+              name="CoinChart"
+              component={CoinChartScreen}
             />
-            <Stack.Screen 
-              name="Chart" 
-              component={CoinChartScreen} 
+            <Stack.Screen
+              name="Chart"
+              component={CoinChartScreen}
             />
-            <Stack.Screen 
-              name="TradeOriginal" 
-              component={TradeOriginalScreen} 
+            <Stack.Screen
+              name="TradeOriginal"
+              component={TradeOriginalScreen}
             />
-            <Stack.Screen 
-              name="Wallet" 
-              component={WalletScreen} 
+            <Stack.Screen
+              name="Wallet"
+              component={WalletScreen}
             />
-            <Stack.Screen 
-              name="Position" 
-              component={PositionScreen} 
+            <Stack.Screen
+              name="MarketWatch"
+              component={MarketWatchScreen}
             />
-            <Stack.Screen 
-              name="Profile" 
-              component={ProfileScreen} 
+            <Stack.Screen
+              name="Position"
+              component={PositionScreen}
+            />
+            <Stack.Screen
+              name="Profile"
+              component={ProfileScreen}
             />
           </>
         ) : (
@@ -194,6 +199,7 @@ export default function AppNavigator() {
             <Stack.Screen name="CoinChart" component={CoinChartScreen} initialParams={{ isLoggedIn: true }} />
             <Stack.Screen name="Chart" component={CoinChartScreen} initialParams={{ isLoggedIn: true }} />
             <Stack.Screen name="Wallet" component={WalletScreen} />
+            <Stack.Screen name="MarketWatch" component={MarketWatchScreen} initialParams={{ isLoggedIn: true }} />
             <Stack.Screen name="Position" component={PositionScreen} />
             <Stack.Screen name="Profile" component={ProfileScreen} />
             <Stack.Screen name="WalletLoggedIn" component={WalletLoggedIn} />

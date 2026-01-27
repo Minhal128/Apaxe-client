@@ -13,7 +13,8 @@ const translations = {
     wallet: 'Wallet',
     position: 'Position',
     profile: 'Profile',
-    
+    market: 'Market',
+
     // Home Screen
     yourBalance: 'Your balance',
     todayPnl: "Today's PNL",
@@ -27,7 +28,7 @@ const translations = {
     noFavoritesYet: 'No favorites yet. Add instruments to your watchlist.',
     loginToViewFavorites: 'Login to view your favorites',
     noInstrumentsAvailable: 'No instruments available for',
-    
+
     // Trading
     buy: 'Buy',
     sell: 'Sell',
@@ -42,7 +43,7 @@ const translations = {
     modify: 'Modify',
     noOpenPositions: 'No open positions',
     noOrders: 'No {type} orders',
-    
+
     // Profile Screen
     account: 'Account',
     profileInformation: 'Profile Information',
@@ -56,7 +57,7 @@ const translations = {
     appInfo: 'App Info',
     appInfoDesc: 'Access important details, support, and legal',
     logout: 'Logout',
-    
+
     // Wallet Screen
     addFunds: 'Add funds',
     deposit: 'Deposit',
@@ -70,14 +71,14 @@ const translations = {
     enterAmount: 'Enter amount',
     processing: 'Processing...',
     confirm: 'Confirm',
-    
+
     // Settings
     preferences: 'Preferences',
     language: 'Language',
     themeMode: 'Theme mode',
     marketSegment: 'Market segment',
     defaultOrderType: 'Default Order type',
-    
+
     // Common
     retry: 'Retry',
     loading: 'Loading...',
@@ -101,7 +102,8 @@ const translations = {
     wallet: 'वॉलेट',
     position: 'पोजीशन',
     profile: 'प्रोफाइल',
-    
+    market: 'मार्केट',
+
     // Home Screen
     yourBalance: 'आपका बैलेंस',
     todayPnl: 'आज का PNL',
@@ -115,7 +117,7 @@ const translations = {
     noFavoritesYet: 'अभी तक कोई पसंदीदा नहीं। अपनी वॉचलिस्ट में इंस्ट्रूमेंट जोड़ें।',
     loginToViewFavorites: 'अपने पसंदीदा देखने के लिए लॉगिन करें',
     noInstrumentsAvailable: 'के लिए कोई इंस्ट्रूमेंट उपलब्ध नहीं',
-    
+
     // Trading
     buy: 'खरीदें',
     sell: 'बेचें',
@@ -130,7 +132,7 @@ const translations = {
     modify: 'संशोधित करें',
     noOpenPositions: 'कोई खुली पोजीशन नहीं',
     noOrders: 'कोई {type} ऑर्डर नहीं',
-    
+
     // Profile Screen
     account: 'खाता',
     profileInformation: 'प्रोफाइल जानकारी',
@@ -144,7 +146,7 @@ const translations = {
     appInfo: 'ऐप जानकारी',
     appInfoDesc: 'महत्वपूर्ण विवरण, सहायता और कानूनी जानकारी तक पहुंचें',
     logout: 'लॉगआउट',
-    
+
     // Wallet Screen
     addFunds: 'फंड जोड़ें',
     deposit: 'जमा करें',
@@ -158,14 +160,14 @@ const translations = {
     enterAmount: 'राशि दर्ज करें',
     processing: 'प्रोसेसिंग...',
     confirm: 'पुष्टि करें',
-    
+
     // Settings
     preferences: 'प्राथमिकताएं',
     language: 'भाषा',
     themeMode: 'थीम मोड',
     marketSegment: 'मार्केट सेगमेंट',
     defaultOrderType: 'डिफ़ॉल्ट ऑर्डर प्रकार',
-    
+
     // Common
     retry: 'पुनः प्रयास करें',
     loading: 'लोड हो रहा है...',
@@ -189,7 +191,8 @@ const translations = {
     wallet: 'Cartera',
     position: 'Posición',
     profile: 'Perfil',
-    
+    market: 'Mercado',
+
     // Home Screen
     yourBalance: 'Tu saldo',
     todayPnl: 'PNL de hoy',
@@ -203,7 +206,7 @@ const translations = {
     noFavoritesYet: 'Aún no hay favoritos. Agrega instrumentos a tu lista de seguimiento.',
     loginToViewFavorites: 'Inicia sesión para ver tus favoritos',
     noInstrumentsAvailable: 'No hay instrumentos disponibles para',
-    
+
     // Trading
     buy: 'Comprar',
     sell: 'Vender',
@@ -218,7 +221,7 @@ const translations = {
     modify: 'Modificar',
     noOpenPositions: 'No hay posiciones abiertas',
     noOrders: 'No hay órdenes {type}',
-    
+
     // Profile Screen
     account: 'Cuenta',
     profileInformation: 'Información del perfil',
@@ -232,7 +235,7 @@ const translations = {
     appInfo: 'Información de la aplicación',
     appInfoDesc: 'Accede a detalles importantes, soporte y legal',
     logout: 'Cerrar sesión',
-    
+
     // Wallet Screen
     addFunds: 'Agregar fondos',
     deposit: 'Depositar',
@@ -246,14 +249,14 @@ const translations = {
     enterAmount: 'Ingresa la cantidad',
     processing: 'Procesando...',
     confirm: 'Confirmar',
-    
+
     // Settings
     preferences: 'Preferencias',
     language: 'Idioma',
     themeMode: 'Modo de tema',
     marketSegment: 'Segmento de mercado',
     defaultOrderType: 'Tipo de orden predeterminado',
-    
+
     // Common
     retry: 'Reintentar',
     loading: 'Cargando...',
@@ -277,7 +280,8 @@ const translations = {
     wallet: 'Geldbörse',
     position: 'Position',
     profile: 'Profil',
-    
+    market: 'Markt',
+
     // Home Screen
     yourBalance: 'Ihr Guthaben',
     todayPnl: 'Heutiger PNL',
@@ -291,7 +295,7 @@ const translations = {
     noFavoritesYet: 'Noch keine Favoriten. Fügen Sie Instrumente zu Ihrer Watchlist hinzu.',
     loginToViewFavorites: 'Melden Sie sich an, um Ihre Favoriten anzuzeigen',
     noInstrumentsAvailable: 'Keine Instrumente verfügbar für',
-    
+
     // Trading
     buy: 'Kaufen',
     sell: 'Verkaufen',
@@ -306,7 +310,7 @@ const translations = {
     modify: 'Ändern',
     noOpenPositions: 'Keine offenen Positionen',
     noOrders: 'Keine {type} Aufträge',
-    
+
     // Profile Screen
     account: 'Konto',
     profileInformation: 'Profilinformationen',
@@ -320,7 +324,7 @@ const translations = {
     appInfo: 'App-Info',
     appInfoDesc: 'Zugriff auf wichtige Details, Support und Rechtliches',
     logout: 'Abmelden',
-    
+
     // Wallet Screen
     addFunds: 'Geld hinzufügen',
     deposit: 'Einzahlen',
@@ -334,14 +338,14 @@ const translations = {
     enterAmount: 'Betrag eingeben',
     processing: 'Wird verarbeitet...',
     confirm: 'Bestätigen',
-    
+
     // Settings
     preferences: 'Einstellungen',
     language: 'Sprache',
     themeMode: 'Themenmodus',
     marketSegment: 'Marktsegment',
     defaultOrderType: 'Standard-Auftragstyp',
-    
+
     // Common
     retry: 'Wiederholen',
     loading: 'Lädt...',
@@ -365,7 +369,8 @@ const translations = {
     wallet: 'Portfel',
     position: 'Pozycja',
     profile: 'Profil',
-    
+    market: 'Rynek',
+
     // Home Screen
     yourBalance: 'Twoje saldo',
     todayPnl: 'Dzisiejszy PNL',
@@ -379,7 +384,7 @@ const translations = {
     noFavoritesYet: 'Jeszcze brak ulubionych. Dodaj instrumenty do swojej listy obserwowanych.',
     loginToViewFavorites: 'Zaloguj się, aby zobaczyć swoje ulubione',
     noInstrumentsAvailable: 'Brak dostępnych instrumentów dla',
-    
+
     // Trading
     buy: 'Kup',
     sell: 'Sprzedaj',
@@ -394,7 +399,7 @@ const translations = {
     modify: 'Modyfikuj',
     noOpenPositions: 'Brak otwartych pozycji',
     noOrders: 'Brak zamówień {type}',
-    
+
     // Profile Screen
     account: 'Konto',
     profileInformation: 'Informacje o profilu',
@@ -408,7 +413,7 @@ const translations = {
     appInfo: 'Informacje o aplikacji',
     appInfoDesc: 'Uzyskaj dostęp do ważnych szczegółów, wsparcia i informacji prawnych',
     logout: 'Wyloguj',
-    
+
     // Wallet Screen
     addFunds: 'Dodaj środki',
     deposit: 'Wpłać',
@@ -422,14 +427,14 @@ const translations = {
     enterAmount: 'Wprowadź kwotę',
     processing: 'Przetwarzanie...',
     confirm: 'Potwierdź',
-    
+
     // Settings
     preferences: 'Preferencje',
     language: 'Język',
     themeMode: 'Tryb motywu',
     marketSegment: 'Segment rynku',
     defaultOrderType: 'Domyślny typ zamówienia',
-    
+
     // Common
     retry: 'Ponów',
     loading: 'Ładowanie...',
