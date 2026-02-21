@@ -32,20 +32,31 @@ function createSeededRNG(seedString) {
   };
 }
 
-function generateDummyOHLC(seedString, count = 60) {
+function generateDummyOHLC(seedString, count = 60, basePrice = 0) {
   const rnd = createSeededRNG(String(seedString || 'default'));
-  // base price derived from seed
-  let base = 100 + Math.floor(rnd() * 10000);
+  // Use a caller-supplied basePrice so candles are anchored to the real market
+  // level; fall back to a seed-derived value only when no price is available yet.
+  let base = basePrice > 0 ? basePrice : 100 + Math.floor(rnd() * 10000);
+  const now = Date.now();
+  const interval = 5 * 60 * 1000; // 5-minute candles
   const candles = [];
   let prevClose = base;
   for (let i = 0; i < count; i++) {
-    const changePct = (rnd() - 0.5) * 0.03; // +/-1.5%
+    const changePct = (rnd() - 0.5) * 0.008; // ±0.4% per candle
     const close = Math.max(0.0001, prevClose * (1 + changePct));
-    const high = Math.max(close, prevClose) * (1 + rnd() * 0.01);
-    const low = Math.min(close, prevClose) * (1 - rnd() * 0.01);
+    const high = Math.max(close, prevClose) * (1 + rnd() * 0.004);
+    const low = Math.min(close, prevClose) * (1 - rnd() * 0.004);
     const positive = close >= prevClose;
     const open = prevClose;
-    candles.push({ high: Number(high.toFixed(2)), low: Number(low.toFixed(2)), positive, close: Number(close.toFixed(2)), open: Number(open.toFixed(2)), volume: Math.round(rnd() * 1000000) });
+    candles.push({
+      high: Number(high.toFixed(2)),
+      low: Number(low.toFixed(2)),
+      positive,
+      close: Number(close.toFixed(2)),
+      open: Number(open.toFixed(2)),
+      volume: Math.round(rnd() * 1000000),
+      time: now - (count - i) * interval,
+    });
     prevClose = close;
   }
   return candles;
@@ -93,21 +104,48 @@ export default function ChartScreen({ route, navigation }) {
 
   // Handle live price updates
   const handlePriceUpdate = useCallback((data) => {
-    if (data.instrumentId === instrumentId || data.symbol === symbol) {
-      setLivePrice(data);
-      setInstrumentData(prev => ({
-        ...prev,
-        currentPrice: data.ltp,
-        lastPrice: data.ltp,
-        bidPrice: data.bid,
-        askPrice: data.ask,
-        high: data.high,
-        low: data.low,
-        change: data.change,
-        changePercent: data.changePercent,
-        volume: data.volume,
-      }));
-    }
+    // Normalize: backend may send "GOLD/MCX" while app stores "GOLD"
+    const normWs  = (data.symbol  || '').split('/')[0].toUpperCase();
+    const normApp = (symbol       || '').split('/')[0].toUpperCase();
+    if (data.instrumentId !== instrumentId && normWs !== normApp) return;
+
+    setLivePrice(data);
+    setInstrumentData(prev => ({
+      ...prev,
+      currentPrice: data.ltp,
+      lastPrice: data.ltp,
+      bidPrice: data.bid,
+      askPrice: data.ask,
+      high: data.high,
+      low: data.low,
+      change: data.change,
+      changePercent: data.changePercent,
+      volume: data.volume,
+    }));
+
+    // Update the live candle so the chart visually moves with each tick
+    setCandlestickData(prev => {
+      if (prev.length === 0) return prev;
+      const updated = [...prev];
+      const last = { ...updated[updated.length - 1] };
+      const now = Date.now();
+      const intervalMs = 5 * 60 * 1000; // match dummy 5-min candles
+      if (now - (last.time || 0) < intervalMs) {
+        last.close = data.ltp;
+        last.high  = Math.max(last.high,  data.ltp);
+        last.low   = Math.min(last.low,   data.ltp);
+        last.positive = last.close >= last.open;
+        updated[updated.length - 1] = last;
+      } else {
+        updated.push({
+          open: last.close, high: data.ltp, low: data.ltp,
+          close: data.ltp, positive: true,
+          volume: data.volume || 0, time: now,
+        });
+        if (updated.length > 120) updated.shift();
+      }
+      return updated;
+    });
   }, [instrumentId, symbol]);
 
   // Setup WebSocket connection for live prices
@@ -169,13 +207,18 @@ export default function ChartScreen({ route, navigation }) {
       if (instrumentId) {
         try {
           const ohlcResponse = await instrumentService.getOHLC(instrumentId);
-          if (ohlcResponse.success && Array.isArray(ohlcResponse.data)) {
+          if (ohlcResponse.success && Array.isArray(ohlcResponse.data) && ohlcResponse.data.length > 0) {
             setCandlestickData(ohlcResponse.data);
-          } else if (ohlcResponse.error === 'Authentication required') {
-            console.log('OHLC data requires authentication, using placeholder chart data');
+          } else {
+            // OHLC unavailable — seed with dummy candles anchored to live price
+            // so handlePriceUpdate can animate the rightmost candle in real-time.
+            const bp = instrumentData?.currentPrice || instrumentData?.lastPrice || 0;
+            setCandlestickData(generateDummyOHLC(`${symbol}-${instrumentId}`, 60, bp));
           }
         } catch (ohlcError) {
           console.log('OHLC data not available, using placeholder');
+          const bp = instrumentData?.currentPrice || instrumentData?.lastPrice || 0;
+          setCandlestickData(generateDummyOHLC(`${symbol}-${instrumentId}`, 60, bp));
         }
       }
     } catch (error) {
@@ -308,10 +351,13 @@ export default function ChartScreen({ route, navigation }) {
   // Generate placeholder candlestick data if none from API.
   // Use a deterministic generator seeded by symbol+instrumentId so each instrument shows unique, realistic-looking candles.
   const seed = `${symbol || ''}-${instrumentId || ''}`;
-  const chartCandlesticks = candlestickData.length > 0 ? candlestickData : generateDummyOHLC(seed, 120);
+  const basePrice = instrumentData?.currentPrice || instrumentData?.lastPrice || instrumentData?.price || 0;
+  // candlestickData is now seeded with real-price-anchored dummies on OHLC failure,
+  // so this fallback only fires on the very first render before data loads.
+  const chartCandlesticks = candlestickData.length > 0 ? candlestickData : generateDummyOHLC(seed, 120, basePrice);
 
-  // Generate order book data based on instrument price
-  const currentPrice = instrumentData?.currentPrice || instrumentData?.lastPrice || instrumentData?.price || 0;
+  // livePrice?.ltp is updated on every WebSocket tick; fall back to instrumentData
+  const currentPrice = livePrice?.ltp || basePrice;
   const priceChange = instrumentData?.changePercent || instrumentData?.change || 0;
   const bidPrice = instrumentData?.bidPrice || currentPrice * 0.9998;
   const askPrice = instrumentData?.askPrice || currentPrice * 1.0002;

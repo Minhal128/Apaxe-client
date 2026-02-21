@@ -10,9 +10,19 @@ class WebSocketService {
   }
 
   async connect() {
+    // Guard: don't open a second connection if one is already open or connecting
+    if (this.ws) {
+      const s = this.ws.readyState;
+      if (s === 0 /* CONNECTING */ || s === 1 /* OPEN */) return;
+    }
+
     const token = await AsyncStorage.getItem('token');
+    if (!token) {
+      console.log('WebSocket: no auth token, skipping connect');
+      return;
+    }
     const wsUrl = `${API_CONFIG.WS_URL}?token=${token}`;
-    
+
     console.log('Connecting to WebSocket:', wsUrl);
 
     this.ws = new WebSocket(wsUrl);
