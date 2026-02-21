@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import RegisteredNavbar from "../components/RegisteredNavbar";
 import UnregisteredNavbar from "../components/UnregisteredNavbar";
 import { instrumentService } from "../services";
 import { useAppAuth } from "../contexts/AuthContext";
+import websocketService from "../services/websocketService";
 
 const { width } = Dimensions.get("window");
 
@@ -36,10 +37,11 @@ export default function MarketWatchScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const wsUnsubRef = useRef(null);
 
-  const fetchInstruments = useCallback(async () => {
+  const fetchInstruments = useCallback(async (silent = false) => {
     try {
-      if (!refreshing) setLoading(true);
+      if (!refreshing && !silent) setLoading(true);
       setError(null);
 
       const res = await instrumentService.getMarketWatch(
@@ -50,12 +52,74 @@ export default function MarketWatchScreen({ route, navigation }) {
       setInstruments(fetchedInstruments);
     } catch (err) {
       console.log("Error fetching market watch instruments:", err.message);
-      setError("Unable to load market data");
+      if (!silent) setError("Unable to load market data");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!silent) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [activeSegment, refreshing]);
+
+  // Auto-refresh market prices every 3 seconds to show live fluctuations
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchInstruments(true);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [fetchInstruments]);
+
+  // WebSocket: real-time price updates for instruments on screen
+  const handleWsPrice = useCallback((data) => {
+    if (!data || !data.instrumentId) return;
+    setInstruments((prev) =>
+      prev.map((inst) => {
+        const instId = inst.instrumentId || inst.id;
+        // Match by instrumentId or by symbol (e.g., 'GOLD' vs 'GOLD/MCX')
+        const normWs = (data.symbol || "").split("/")[0].toUpperCase();
+        const normInst = (inst.symbol || "").toUpperCase();
+        if (instId !== data.instrumentId && normInst !== normWs) return inst;
+
+        return {
+          ...inst,
+          ltp: data.ltp ?? inst.ltp,
+          high: data.high ?? inst.high,
+          low: data.low ?? inst.low,
+          change: data.change ?? inst.change,
+          changePercent: data.changePercent ?? inst.changePercent,
+          volume: data.volume ?? inst.volume,
+          currentPrice: {
+            ...(inst.currentPrice || {}),
+            ltp: data.ltp ?? inst.currentPrice?.ltp,
+            high: data.high ?? inst.currentPrice?.high,
+            low: data.low ?? inst.currentPrice?.low,
+            change: data.change ?? inst.currentPrice?.change,
+            changePercent: data.changePercent ?? inst.currentPrice?.changePercent,
+          },
+        };
+      }),
+    );
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      websocketService.connect().catch(console.error);
+      wsUnsubRef.current = websocketService.subscribe("price", handleWsPrice);
+
+      // Subscribe to all visible instruments
+      instruments.forEach((inst) => {
+        const id = inst.instrumentId || inst.id;
+        if (id) websocketService.subscribeToInstrument(id);
+      });
+    }
+
+    return () => {
+      if (wsUnsubRef.current) {
+        wsUnsubRef.current();
+        wsUnsubRef.current = null;
+      }
+    };
+  }, [isAuthenticated, handleWsPrice, instruments]);
 
   const navigateToChart = async (item) => {
     let userId = null;
