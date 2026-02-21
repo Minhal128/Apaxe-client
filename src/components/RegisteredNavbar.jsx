@@ -14,14 +14,10 @@ export default function RegisteredNavbar({ navigation, activeScreen = 'home' }) 
 
   // Navigate to home safely - reset to MainTabs
   const navigateToHome = () => {
-    if (isAuthenticated) {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'MainTabs' }],
-      });
-    } else {
-      navigation.navigate('InitialHome');
-    }
+    navigation.reset({
+      index: 0,
+      routes: [{ name: isAuthenticated ? 'MainTabs' : 'InitialHome' }],
+    });
   };
 
   return (

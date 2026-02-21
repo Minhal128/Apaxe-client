@@ -363,22 +363,26 @@ export default function CoinChartScreen({ route, navigation }) {
   };
 
   const handlePriceUpdate = useCallback((data) => {
-    if (data.instrumentId === instrumentId || data.symbol === symbol) {
-      setLivePrice(data);
-      setInstrumentData(prev => ({
-        ...prev,
-        currentPrice: data.ltp,
-        lastPrice: data.ltp,
-        bidPrice: data.bid,
-        askPrice: data.ask,
-        high: data.high,
-        low: data.low,
-        change: data.change,
-        changePercent: data.changePercent,
-        volume: data.volume,
-      }));
+    // Normalize symbols: backend may send "GOLD/MCX" while the app stores "GOLD"
+    const normWs  = (data.symbol  || '').split('/')[0].toUpperCase();
+    const normApp = (symbol       || '').split('/')[0].toUpperCase();
+    if (data.instrumentId !== instrumentId && normWs !== normApp) return;
 
-      setCandlestickData(prevCandles => {
+    setLivePrice(data);
+    setInstrumentData(prev => ({
+      ...prev,
+      currentPrice: data.ltp,
+      lastPrice: data.ltp,
+      bidPrice: data.bid,
+      askPrice: data.ask,
+      high: data.high,
+      low: data.low,
+      change: data.change,
+      changePercent: data.changePercent,
+      volume: data.volume,
+    }));
+
+    setCandlestickData(prevCandles => {
         if (prevCandles.length === 0) return prevCandles;
 
         const updatedCandles = [...prevCandles];
@@ -420,7 +424,6 @@ export default function CoinChartScreen({ route, navigation }) {
 
         return updatedCandles;
       });
-    }
   }, [instrumentId, symbol, selectedTimeframe]);
 
   useEffect(() => {
@@ -525,6 +528,9 @@ export default function CoinChartScreen({ route, navigation }) {
 
   const fetchOHLCData = async () => {
     if (!instrumentId) return;
+    // Capture the current best-known price now (before the async request) so the
+    // fallback dummy candles are anchored to the real market level.
+    const fallbackBase = instrumentData?.currentPrice || instrumentData?.lastPrice || 64000;
     try {
       const timeframeMap = {
         '1m': '1m',
@@ -536,7 +542,7 @@ export default function CoinChartScreen({ route, navigation }) {
       };
       const apiTimeframe = timeframeMap[selectedTimeframe] || '15m';
       const ohlcResponse = await instrumentService.getOHLC(instrumentId, apiTimeframe);
-      if (ohlcResponse.success && Array.isArray(ohlcResponse.data)) {
+      if (ohlcResponse.success && Array.isArray(ohlcResponse.data) && ohlcResponse.data.length > 0) {
         // Normalize field names and strictly enforce sequential timestamps
         const now = Date.now();
         const timeframeMultipliers = { '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '1d': 1440 };
@@ -561,9 +567,20 @@ export default function CoinChartScreen({ route, navigation }) {
           };
         });
         setCandlestickData(normalized);
+      } else {
+        // OHLC endpoint returned no data (or a server error) — seed the chart
+        // with dummy candles anchored to the real instrument price so
+        // handlePriceUpdate can then animate the rightmost candle live.
+        if (candlestickData.length === 0) {
+          setCandlestickData(generateDummyOHLC(`${symbol}-${instrumentId}`, 50, fallbackBase));
+        }
       }
     } catch (e) {
       console.log('OHLC not available');
+      // Same fallback: seed once so live WebSocket updates can paint on top.
+      if (candlestickData.length === 0) {
+        setCandlestickData(generateDummyOHLC(`${symbol}-${instrumentId}`, 50, fallbackBase));
+      }
     }
   };
 
