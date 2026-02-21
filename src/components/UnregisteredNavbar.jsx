@@ -11,12 +11,15 @@ export default function UnregisteredNavbar({ navigation, activeScreen = 'home' }
 
   // Safe navigation to home - handles both auth and unauth stacks
   const navigateToHome = () => {
-    try {
-      // Try InitialHome first (unauth stack)
+    // Check which screens are available in the current navigator
+    const state = navigation.getState();
+    const routeNames = state?.routeNames || [];
+    if (routeNames.includes('InitialHome')) {
       navigation.navigate('InitialHome');
-    } catch (e) {
-      // Fallback to Home (auth stack)
-      navigation.navigate('Home');
+    } else if (routeNames.includes('MainTabs')) {
+      navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+    } else {
+      navigation.goBack();
     }
   };
 
